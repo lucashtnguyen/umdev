@@ -128,15 +128,37 @@ def bind_model_identities(canonical: dict[str, Any], config: Mapping[str, Any],
             row["model_id"] = target
 
 
-def baseline_node_parameters(document: SWMMDocument, config: Mapping[str, Any]) -> dict[str, dict[str, float]]:
-    """Read baseline junction floors/rims into canonical metres for preparation."""
+def baseline_node_parameters(document: SWMMDocument, config: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """Read existing junction/storage profiles in SI without modifying their cards.
+
+    Notes
+    -----
+    STORAGE elevation and maximum depth are the first two numeric fields for
+    both functional and tabular storage. Their sum is the preserved model top,
+    not a newly surveyed ground rim. Storage curves and every remaining token
+    remain opaque and untouched. Outfalls/dividers supply no junction rim.
+    """
     unit = config["model"]["target"]["length_unit"]
-    result = {}
-    for row in document.records("JUNCTIONS"):
-        fields = interpret_fields("JUNCTIONS", row)
-        floor = to_metres(float(fields["invert_elevation"]), unit)
-        depth = to_metres(float(fields["max_depth"]), unit)
-        result[row.tokens[0]] = {"floor_m": floor, "rim_m": floor + depth}
+    result: dict[str, dict[str, Any]] = {}
+    seen: set[str] = set()
+    for section in _NODE_SECTIONS:
+        for row in document.records(section):
+            identity = _key(row.tokens[0])
+            if identity in seen:
+                raise ValueError("Case-insensitive baseline node identity collision")
+            seen.add(identity)
+            if section not in {"JUNCTIONS", "STORAGE"}:
+                continue
+            if section == "JUNCTIONS":
+                fields = interpret_fields("JUNCTIONS", row)
+                floor = to_metres(fields["invert_elevation"], unit)
+                depth = to_metres(fields["max_depth"], unit)
+            else:
+                if len(row.tokens) < 3:
+                    raise ValueError("Existing STORAGE requires finite elevation and maximum depth")
+                floor, depth = to_metres(row.tokens[1], unit), to_metres(row.tokens[2], unit)
+            result[row.tokens[0]] = {"floor_m": floor, "rim_m": floor + depth,
+                "max_depth_m": depth, "model_section": section, "model_id": row.tokens[0]}
     return result
 
 
@@ -203,15 +225,20 @@ def compile_handoff(document: SWMMDocument, prepared: Mapping[str, Any],
 
     Notes
     -----
-    Existing floors are preserved. Changing a floor and all its dependencies is
-    intentionally held by this adapter. Existing hydraulic pipe updates require
-    exact directed endpoint identity and circular shape; geometry replacement
+    Existing junction floors and entire existing storage profiles are preserved.
+    Gravity links may reference an existing storage without writing its card or
+    curve. New storage, pressure links and outfall endpoints remain unsupported.
+    Changing a floor and all its dependencies is intentionally held by this
+    adapter. Existing hydraulic pipe updates require exact directed endpoint
+    identity and circular shape; geometry replacement
     remains a downstream capability gap.
     """
     _validate_model_basis(document, config)
     target = config["model"]["target"]
     length_unit, map_unit = target["length_unit"], target["map_unit"]
     junctions = {_key(r.tokens[0]): r for r in document.records("JUNCTIONS")}
+    storages = {_key(r.tokens[0]): r for r in document.records("STORAGE")}
+    baseline_profiles = {_key(identity): values for identity, values in baseline_node_parameters(document, config).items()}
     node_namespace = {_key(r.tokens[0]): section for section in _NODE_SECTIONS for r in document.records(section)}
     links = {_key(r.tokens[0]): r for r in document.records("CONDUITS")}
     link_namespace = {_key(r.tokens[0]): section for section in _LINK_SECTIONS for r in document.records(section)}
@@ -241,8 +268,16 @@ def compile_handoff(document: SWMMDocument, prepared: Mapping[str, Any],
         if _key(name) in seen_targets:
             raise ValueError("Two prepared source pipes target the same model identity")
         seen_targets.add(_key(name))
-        if any(_key(node) in node_namespace and _key(node) not in junctions for node in ends):
+        if any(_key(node) in storages for node in ends) and pipe.get("pipe_kind") != "gravity":
+            reason = "unsupported_pressure_or_parameter_contract"
+        elif any(_key(node) in node_namespace and _key(node) not in junctions and _key(node) not in storages for node in ends):
             reason = "existing_nonjunction_endpoint_requires_supported_parameter_contract"
+        elif any(row.get("model_section") == "STORAGE" and _key(node) not in storages for row, node in zip((upstream, downstream), ends)):
+            reason = "new_storage_requires_supported_parameter_contract"
+        elif any(_key(node) in storages and baseline_profiles[_key(node)]["max_depth_m"] <= 0 for node in ends):
+            reason = "existing_storage_profile_requires_positive_depth"
+        elif any(_key(node) in storages and _key(node) not in coords for node in ends):
+            reason = "existing_storage_endpoint_requires_baseline_coordinates"
         elif _key(name) in link_namespace and _key(name) not in links:
             reason = "existing_nonconduit_target_requires_supported_operation"
         elif pipe.get("shape") != "CIRCULAR":
@@ -275,7 +310,13 @@ def compile_handoff(document: SWMMDocument, prepared: Mapping[str, Any],
         depth = from_metres(row["max_depth_m"], length_unit)
         evidence[source_key] = {"asset_id": identity, "assignments": row.get("assignments", {}),
             "units": fields_units, "qa_flags": [f for f in prepared.get("findings", []) if f.get("object_key") == source_key]}
-        if _key(name) in junctions:
+        if _key(name) in storages:
+            # Existing storage is only an endpoint reference. Never turn it into
+            # a junction or alter its stage/area curve, depth, losses or map point.
+            old = baseline_profiles[_key(name)]
+            if not math.isclose(row["floor_m"], old["floor_m"], rel_tol=0, abs_tol=1e-9) or not math.isclose(row["rim_m"], old["rim_m"], rel_tol=0, abs_tol=1e-9):
+                raise NotImplementedError("Existing STORAGE floor/rim edits are unsupported; preserve its profile")
+        elif _key(name) in junctions:
             old = interpret_fields("JUNCTIONS", junctions[_key(name)])
             if not math.isclose(floor, float(old["invert_elevation"]), rel_tol=0, abs_tol=1e-9):
                 raise NotImplementedError("Existing floor edits require complete dependent-end preservation")
@@ -363,7 +404,7 @@ def verify_prepared_profiles(candidate: SWMMDocument, prepared: Mapping[str, Any
     unit = config["model"]["target"]["length_unit"]
     setting = config.get("qa", {}).get("readback_absolute_tolerance", {"value": 1e-9, "unit": "m"})
     tolerance = to_metres(setting["value"], setting["unit"])
-    junctions = {_key(r.tokens[0]): r for r in candidate.records("JUNCTIONS")}
+    profile_nodes = {_key(r.tokens[0]): r for section in ("JUNCTIONS", "STORAGE") for r in candidate.records(section)}
     conduits = {_key(r.tokens[0]): r for r in candidate.records("CONDUITS")}
     xsections = {_key(r.tokens[0]): r for r in candidate.records("XSECTIONS")}
     nodes = {r["asset_id"]: r for r in prepared["nodes"]}
@@ -378,7 +419,7 @@ def verify_prepared_profiles(candidate: SWMMDocument, prepared: Mapping[str, Any
         for end, field, column in (("upstream", "from_node", 5), ("downstream", "to_node", 6)):
             node = nodes[pipe[field]]
             model_id = handoff["model_ids"]["nodes"][node["asset_id"]]
-            raw = junctions[_key(model_id)]
+            raw = profile_nodes[_key(model_id)]
             floor = to_metres(float(raw.tokens[1]), unit)
             depth = to_metres(float(raw.tokens[2]) if len(raw.tokens) > 2 else 0, unit)
             port = floor + to_metres(float(observed.tokens[column]), unit) if config["model"]["target"]["link_offsets"] == "DEPTH" else to_metres(float(observed.tokens[column]), unit)
@@ -409,7 +450,8 @@ def candidate_engineering_qa(document: SWMMDocument, config: Mapping[str, Any]) 
     CIRCULAR/FORCE_MAIN conduit heights. Other link types participate in the
     directed connectivity graph without invented hydraulic parameters.
     """
-    from .qa import connectivity_findings, profile_findings
+    from .qa import finding, profile_findings
+    from .topology import diagnose_swmm_topology
     unit = config["model"]["target"]["length_unit"]
     convention = config["model"]["target"]["link_offsets"]
     nodes, floors = [], {}
@@ -424,12 +466,11 @@ def candidate_engineering_qa(document: SWMMDocument, config: Mapping[str, Any]) 
                 row.update(rim_m=floor + depth, max_depth_m=depth)
             nodes.append(row)
     shapes = {_key(r.tokens[0]): r for r in document.records("XSECTIONS")}
-    profiles, topology = [], []
+    profiles = []
     for section in _LINK_SECTIONS:
         for record in document.records(section):
             base = {"key": f"model/{section}/{record.tokens[0]}", "asset_id": record.tokens[0],
                     "from_node": _key(record.tokens[1]), "to_node": _key(record.tokens[2]), "disposition": "include"}
-            topology.append(base)
             if section != "CONDUITS":
                 continue
             shape = shapes.get(_key(record.tokens[0]))
@@ -444,4 +485,25 @@ def candidate_engineering_qa(document: SWMMDocument, config: Mapping[str, Any]) 
             profiles.append({**base, "pipe_kind": "force_main" if shape.tokens[1].upper() == "FORCE_MAIN" else "gravity", "upstream_invert_m": ends[0],
                 "downstream_invert_m": ends[1], "length_m": to_metres(float(record.tokens[3]), unit),
                 "diameter_m": to_metres(float(shape.tokens[2]), unit)})
-    return profile_findings(nodes, profiles, config) + connectivity_findings(topology, config)
+    # Separate legitimate networks with outfalls from components lacking an
+    # outlet route. Weak connectivity alone cannot establish hydraulic support.
+    graph = diagnose_swmm_topology(document, document)
+    connectivity = []
+    for component in graph["components"]:
+        missing = component["nodes_without_directed_terminal_route"]
+        if not component["terminal_node_ids"]:
+            rule = "isolated_model_node" if component["isolated_node"] else "component_without_outfall"
+            connectivity.append(finding(rule, component["node_ids"][0], config,
+                node_ids=component["node_ids"], link_ids=component["link_ids"],
+                nominal_directed_topology=True))
+        elif missing:
+            connectivity.append(finding("nodes_without_directed_outfall_route",
+                missing[0], config, node_ids=missing, component_node_ids=component["node_ids"],
+                nominal_directed_topology=True))
+        elif len(graph["components"]) > 1:
+            connectivity.append({"rule": "independent_outfall_component", "rule_version": 1,
+                "object_key": component["node_ids"][0], "severity": "info",
+                "disposition": "informational", "review_status": "not_required",
+                "node_ids": component["node_ids"], "outfall_ids": component["terminal_node_ids"],
+                "nominal_directed_topology": True})
+    return profile_findings(nodes, profiles, config) + connectivity

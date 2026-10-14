@@ -88,6 +88,7 @@ td,th{border:1px solid #ccd5df;padding:.4rem;text-align:left;vertical-align:top}
 <p>Prepared values, engineering findings and membership are separate from model-file integrity.
 Simulation and calibration are not established by this report.</p>
 <nav><a href="preview_diff.html">SHMM preview diff</a><a href="written_model_diff.html">SHMM written-model diff</a>
+<a href="topology_components.csv">Network components</a><a href="topology_connector_candidates.csv">Held/excluded connector candidates</a>
 <a href="candidate_qa.csv">Written-model QA CSV</a><a href="profile_verification.json">Profile readback</a>
 <a href="prepared.json">Prepared values and evidence</a><a href="membership.csv">Membership CSV</a></nav>
 <p><label>Filter rows <input id="filter" type="search"></label></p>""" + "".join(sections) + """

@@ -186,9 +186,11 @@ def prepare_network(network: Network, config: Mapping[str, Any], *,
         Effective project configuration defining port, datum, floor/rim,
         dimensional and roughness policies. No municipality defaults exist.
     baseline_nodes : mapping, optional
-        Existing model node IDs to SI ``floor_m`` and ``rim_m``. Existing floors
-        are preserved, and new pipe offsets are recomputed from absolute ends.
-        Updating existing floors and all dependencies requires another contract.
+        Existing model node IDs to SI ``floor_m``/``rim_m`` and optional
+        ``model_section``/``model_id`` provenance. Existing floors are preserved;
+        existing STORAGE tops are also preserved regardless of junction-rim
+        policy. New pipe offsets are recomputed from absolute ends. Updating
+        existing floors and all dependencies requires another contract.
     selected_pipe_keys : sequence of str, optional
         Explicit requested source keys. Omission prepares every source pipe;
         it never implies deletion of any baseline model object.
@@ -255,9 +257,16 @@ def prepare_network(network: Network, config: Mapping[str, Any], *,
             baseline_rim = finite_number(baseline.get("rim_m"))
             if baseline_floor is None or baseline_rim is None:
                 raise ValueError(f"Existing model node {identity} lacks a finite floor/rim")
-            floor = Assignment(baseline_floor, "observed", "preserved_baseline_floor", evidence=({"model_id": identity},))
-            if not node_policy.get("update_existing_rims", False):
-                rim = Assignment(baseline_rim, "observed", "preserved_baseline_rim", evidence=({"model_id": identity},))
+            model_section = baseline.get("model_section", "JUNCTIONS")
+            if model_section not in {"JUNCTIONS", "STORAGE"}:
+                raise ValueError("Existing endpoint profile supports only JUNCTIONS/STORAGE")
+            reference = {"model_id": baseline.get("model_id", node.get("model_id") or identity),
+                         "model_section": model_section}
+            floor = Assignment(baseline_floor, "observed", "preserved_baseline_floor", evidence=(reference,))
+            # An existing storage's top and stage/area relationship are one
+            # preserved hydraulic object; generic junction-rim policy cannot edit it.
+            if model_section == "STORAGE" or not node_policy.get("update_existing_rims", False):
+                rim = Assignment(baseline_rim, "observed", "preserved_baseline_rim", evidence=(reference,))
         reasons = []
         coordinates = node.get("coordinates")
         if baseline is None and (not isinstance(coordinates, Sequence) or len(coordinates) < 2 or
@@ -274,7 +283,9 @@ def prepare_network(network: Network, config: Mapping[str, Any], *,
         if depth is not None and depth <= 0:
             reasons.append("rim_not_above_floor")
         row = {**deepcopy(node), "floor_m": floor.value, "rim_m": rim.value, "max_depth_m": depth,
-               "is_existing": baseline is not None, "disposition": "hold" if reasons else "include",
+               "is_existing": baseline is not None,
+               "model_section": baseline.get("model_section", "JUNCTIONS") if baseline is not None else "JUNCTIONS",
+               "disposition": "hold" if reasons else "include",
                "reasons": reasons, "assignments": {"floor": floor.to_dict(), "rim": rim.to_dict()}}
         prepared_nodes.append(row)
         for field, assignment in (("floor", floor), ("rim", rim)):

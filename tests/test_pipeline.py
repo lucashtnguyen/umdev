@@ -76,7 +76,9 @@ def test_full_update_two_schemas_and_manual_diffs(tmp_path: Path, source: str) -
     output = tmp_path / "review"
     for name in ["preview_diff.json", "preview_diff.csv", "preview_diff.html",
                  "written_model_diff.json", "written_model_diff.csv", "written_model_diff.html",
-                 "review.html", "handoff.json", "membership.csv", "profile_verification.json"]:
+                 "review.html", "handoff.json", "membership.csv", "profile_verification.json",
+                 "topology.json", "topology_components.csv", "topology_nodes.csv",
+                 "topology_connector_candidates.csv"]:
         assert (output / name).exists()
     candidate = read_document(result["candidate"])
     nodes = {r.tokens[0]: r.tokens for r in candidate.records("JUNCTIONS")}
@@ -85,6 +87,13 @@ def test_full_update_two_schemas_and_manual_diffs(tmp_path: Path, source: str) -
     assert "0007" in {r.tokens[0] for r in candidate.records("CONDUITS")}
     written = json.loads((output / "written_model_diff.json").read_text())
     assert written["verification"]["matches_expected"] is True
+    topology = json.loads((output / "topology.json").read_text())
+    assert topology["candidate_sha256"] == result["candidate_sha256"]
+    assert topology["baseline_sha256"] == result["baseline_sha256"]
+    assert topology["summary"] == result["topology"]
+    assert topology["summary"]["baseline_weak_components"] == 1
+    assert topology["summary"]["new_unsupported_islands"] == 1
+    assert topology["summary"]["source_connectors_already_present"] == 1
 
 
 def test_reproducible_candidate_and_no_overwrite(tmp_path: Path) -> None:

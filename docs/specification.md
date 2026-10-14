@@ -29,7 +29,12 @@ Native GeoJSON/GeoPackage/File Geodatabase adapters remain unavailable;
 externally exported inspected packets are the GIS bridge. pyproj validates
 projected CRS/axes/units; global reprojection is unsupported. The writer compiles
 supported circular gravity-pipe/junction operations against an existing compatible
-SWMM baseline. Pressure parameters, noncircular additions, spatial asset matching,
+SWMM baseline. A gravity conduit can use an existing STORAGE endpoint with its
+baseline floor and maximum-depth-derived model top preserved; no storage, curve,
+coordinate, initial-depth or control edits are generated. This does not establish
+that a modeled storage top is a surveyed ground rim. New storage creation and
+outfall-endpoint parameter contracts remain unsupported. Pressure parameters,
+noncircular additions, spatial asset matching,
 aggregation, existing-floor dependency edits, renames/deletes/rewires,
 existing-vertex replacement and new model creation remain unsupported.
 
@@ -397,6 +402,22 @@ portable source packet in its supported environment, then the Python 3.12 core c
 prepare it. Adapter availability and source-packet versions are in the run manifest.
 Feature-service access and additional vendor formats are extensions with read-only
 snapshot and authentication contracts.
+
+### Implemented topology diagnosis
+
+The independent read-only `umdev.topology` API compares complete candidate and
+baseline graphs across all supported SWMM node/link families, including isolated
+nodes. It reports deterministic weak components, inherited separate networks,
+merges/splits and introduced unsupported islands. Per-node nominal directed routes
+to existing baseline nodes and explicit outfalls are distinct checks; baseline
+attachment is not hydraulic acceptance. Pumps and regulators are nominal edges,
+without assumptions about operating status or hydraulic capacity.
+
+Held/excluded source links can be reported as exact-ID connector candidates after
+an explicit endpoint crosswalk. Their original disposition and reasons remain
+visible; the diagnostic never snaps, inserts links, expands selection or
+redistributes loads. See [topology review](topology.md) for callable input/output
+contracts, interpretation limits and manual QA steps.
 
 ### Package structure and extension targets
 

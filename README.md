@@ -62,6 +62,9 @@ A new run directory contains:
   requests/no-ops, observed/missing/unexpected effects and exact preservation checks.
 - `candidate.inp`, `application_audit.json`, `profile_verification.json`:
   separate written model, SHMM audit and prepared-to-written profile checks.
+- `topology.json`, `topology_components.csv`, `topology_nodes.csv` and
+  `topology_connector_candidates.csv`: inherited basins, introduced islands,
+  directed baseline/outfall routes and unapplied exact-ID connector evidence.
 - `candidate_qa.json/.csv`, `review.html` and, after successful integrity checks,
   `completion.json`. An explicitly enabled engine check adds separate artifacts.
 
@@ -74,6 +77,18 @@ Completion distinguishes edit integrity, engineering status and optional engine
 results. Exact requested bytes do not establish hydraulic acceptance or calibration.
 Ordinary warnings remain review items; configured hold findings remain holds.
 
+### Network islands and nominal downstream routes
+
+The read-only topology API distinguishes inherited independent baseline basins
+from new islands, isolated nodes and extensions with reversed downstream access.
+It reports directed routes to baseline nodes separately from outfall reachability,
+retains all node/link families, and identifies exact-ID held/excluded source
+connector candidates without inserting them or expanding scope. Diagnostic
+identities obey the configured method order and frozen crosswalk; unresolved
+endpoints remain findings instead of guessed asset-ID matches. Pump/regulator
+operating conditions and hydraulic acceptance require separate engineering review.
+See [topology and island review](docs/topology.md) for the contract and checklist.
+
 ### Capability limits
 
 - Implemented input formats: `json_packet`/`json` and `csv`. Native GeoJSON,
@@ -83,7 +98,10 @@ Ordinary warnings remain review items; configured hold findings remain holds.
   Global reprojection and baseline datum conversion are unsupported. Configured
   identity/constant-offset observation transforms are separate traceable rules.
 - The adapter writes supported circular gravity conduits, cross sections, junctions,
-  coordinates and add-only ordered vertices. Pressure parameters, noncircular
+  coordinates and add-only ordered vertices. Existing STORAGE objects can serve
+  as gravity-pipe endpoints using their preserved model floor and top elevation;
+  storage records, curves, initial depths, coordinates and controls are not edited.
+  New storage objects, outfall-endpoint parameter contracts, pressure parameters, noncircular
   additions, deletes, renames, rewiring, existing-vertex replacement, existing-floor
   dependency edits and new model creation remain held or unsupported.
 - `supported_subnetwork` publishes supported complete objects and lists holds.
@@ -119,9 +137,11 @@ Public functions: `load_config`, `ingest_sources`, `prepare_network_from_dict`,
 `run_project`. Lower-level `umdev.models` functions `compile_handoff`,
 `instructions_from_handoff`, `verify_prepared_profiles` and
 `candidate_engineering_qa` support separate orchestration and review.
+`umdev.topology.diagnose_topology` and `diagnose_swmm_topology` expose read-only
+component, directed-route and source-connector diagnostics.
 
 Modules are under `src/umdev`: configuration, sources, records, evidence, parameters,
-models, pipeline, qa, reporting and units. `schemas/project.schema.json` describes
+models, pipeline, qa, topology, reporting and units. `schemas/project.schema.json` describes
 version 1; runtime semantic/source/capability validation is also required.
 Add ordinary field names, domains and policies through private configuration;
 new formats, grammars or model operations require explicit implementation/tests.

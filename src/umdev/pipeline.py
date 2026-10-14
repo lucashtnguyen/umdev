@@ -19,10 +19,11 @@ from typing import Any, Mapping
 from hymo import read_document
 
 from .configuration import load_config
-from .models import bind_model_identities, validate_crosswalk, baseline_node_parameters, candidate_engineering_qa, compile_handoff, instructions_from_handoff, verify_prepared_profiles
+from .models import bind_model_identities, resolve_model_identity, validate_crosswalk, baseline_node_parameters, candidate_engineering_qa, compile_handoff, instructions_from_handoff, verify_prepared_profiles
 from .parameters import prepare_network_from_dict
 from .reporting import json_value, stable_hash, write_csv, write_json, write_review_html
 from .sources import ingest_sources, matches_predicates
+from .topology import diagnose_swmm_topology
 from .units import to_metres
 
 
@@ -140,6 +141,69 @@ def _crosswalk_canonical(canonical: dict[str, Any], config: Mapping[str, Any]) -
     data = Path(path).read_bytes()
     mapping = validate_crosswalk(json.loads(data))
     return {str(path): sha256(data).hexdigest()}, mapping
+
+
+
+def _topology_source_connectors(canonical: Mapping[str, Any], membership: list[dict[str, Any]],
+                                 handoff: Mapping[str, Any], config: Mapping[str, Any],
+                                 crosswalk_snapshot: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """Resolve diagnostic connector identities using the frozen application policy.
+
+    Notes
+    -----
+    Selected rows use the explicit applied handoff when available. Other source
+    nodes/links use exactly the configured identity methods and frozen crosswalk;
+    asset-ID fallback is never enabled merely for topology diagnostics. Missing
+    endpoint identities stay unresolved with source references and reasons.
+    This function does not mutate canonical rows, membership or edit instructions.
+    """
+    decisions = {row["source_key"]: row for row in membership}
+    source_nodes = {row["asset_id"]: row for row in canonical["nodes"]}
+    crosswalk = crosswalk_snapshot or {"nodes": {}, "pipes": {}}
+    frozen_ids = handoff.get("model_ids", {})
+
+    def resolve(row: Mapping[str, Any], entity: str, frozen_key: str) -> tuple[str | None, str | None, str | None]:
+        frozen = frozen_ids.get(entity, {}).get(frozen_key)
+        if frozen is not None:
+            return frozen, "frozen_applied_handoff", None
+        try:
+            identity, method = resolve_model_identity(row, entity, config, crosswalk)
+            return identity, method, None
+        except ValueError as error:
+            return None, None, str(error)
+
+    result = []
+    for pipe in canonical["pipes"]:
+        decision = decisions[pipe["key"]]
+        pipe_id, pipe_method, pipe_error = resolve(pipe, "pipes", pipe["key"])
+        issues = {}
+        if pipe_error is not None:
+            issues["model_id"] = pipe_error
+        endpoint_ids = {}
+        provenance = {}
+        for field in ("from_node", "to_node"):
+            source_id = pipe.get(field)
+            if not isinstance(source_id, str) or not source_id.strip():
+                endpoint_ids[field] = None
+                issues[field] = "Missing or invalid source endpoint identifier"
+                provenance[field] = {"source_asset_id": source_id, "resolved_model_id": None, "method": None}
+                continue
+            # A directed source endpoint field is itself an explicit identity
+            # observation. A missing structure row supplies no mapped model ID,
+            # but an enabled crosswalk/asset-ID method can still resolve that ID.
+            node = source_nodes.get(source_id, {"key": f"{pipe['key']}/{field}", "asset_id": source_id})
+            identity, method, error = resolve(node, "nodes", source_id)
+            endpoint_ids[field] = identity
+            provenance[field] = {"source_asset_id": source_id, "resolved_model_id": identity, "method": method}
+            if error is not None:
+                issues[field] = error
+        result.append({"key": pipe["key"], "asset_id": pipe["asset_id"],
+            "model_id": pipe_id, "model_identity_resolved": pipe_id is not None,
+            **endpoint_ids, "source_from_node": pipe.get("from_node"), "source_to_node": pipe.get("to_node"),
+            "node_model_association": provenance, "pipe_model_association": {"method": pipe_method},
+            "identity_issues": issues, "status": pipe.get("status"), "family": pipe.get("pipe_kind"),
+            "disposition": decision["disposition"], "reasons": deepcopy(decision["reasons"])})
+    return result
 
 
 def run_project(config_path: str | Path, *, output_directory: str | Path | None = None) -> dict[str, Any]:
@@ -264,6 +328,14 @@ def run_project(config_path: str | Path, *, output_directory: str | Path | None 
         row["baseline_status"] = "preexisting_or_changed" if identity(row) in previous else "introduced"
     write_json(output / "candidate_qa.json", {"baseline_findings": baseline_findings, "candidate_findings": candidate_findings})
     write_csv(output / "candidate_qa.csv", candidate_findings)
+    # Exact identity connector candidates remain evidence only. Neither graph
+    # diagnosis nor a missing outlet path authorizes adding excluded source pipes.
+    source_connectors = _topology_source_connectors(canonical, membership, handoff, config, crosswalk_snapshot)
+    topology_report = diagnose_swmm_topology(candidate, baseline, source_connectors=source_connectors)
+    write_json(output / "topology.json", topology_report)
+    write_csv(output / "topology_components.csv", topology_report["components"])
+    write_csv(output / "topology_nodes.csv", topology_report["nodes"])
+    write_csv(output / "topology_connector_candidates.csv", topology_report["source_connector_candidates"])
     write_review_html(output / "review.html", prepared, membership, candidate_findings=candidate_findings)
     # Re-read configured inputs so a stale captured configuration or source packet
     # cannot be reported as a verified current result.
@@ -286,7 +358,7 @@ def run_project(config_path: str | Path, *, output_directory: str | Path | None 
     engineering_holds = sum(row.get("disposition") == "hold" for row in candidate_findings)
     if mode == "complete_request" and engineering_holds:
         raise ValueError("Complete-request publication has written-model engineering holds")
-    engineering_status = "held" if engineering_holds else ("review_required" if candidate_findings else "clear")
+    engineering_status = "held" if engineering_holds else ("review_required" if any(row.get("severity") != "info" for row in candidate_findings) else "clear")
     completion = {"status": "verified_model_update", "candidate": str(candidate_path),
         "review": str(output / "review.html"), "scenario": config["selection"]["scenario"],
         "config_sha256": resolved.sha256, "baseline_sha256": baseline_hash,
@@ -298,6 +370,7 @@ def run_project(config_path: str | Path, *, output_directory: str | Path | None 
         "preview_matches_written": True, "source_preservation": True,
         "engineering_findings": len(prepared["findings"]), "candidate_qa_findings": len(candidate_findings), "engine": engine,
         "engineering_status": engineering_status, "written_engineering_holds": engineering_holds,
+        "topology": topology_report["summary"],
         "calibration_acceptance": "not_established"}
     write_json(output / "completion.json", completion)
     return completion

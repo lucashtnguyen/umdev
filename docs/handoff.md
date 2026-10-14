@@ -18,8 +18,12 @@ Both preview and written-model diffs are required products of a candidate build.
 SHMM comparisons, verifies prepared-to-written profiles and writes completion
 only after integrity checks. Sources/config/outputs stay in private workspaces.
 
-Prepared network objects compile only supported circular gravity conduits and
-junctions. `model.changes_path` can supply additional finished SHMM operations
+Prepared network objects compile supported circular gravity conduits and
+junctions. Existing STORAGE endpoints may receive gravity-pipe connections using
+preserved baseline floor/top parameters; no STORAGE, curve, coordinate or control
+updates are generated for those endpoints. New storage creation, pressure-pipe
+parameters and outfall-endpoint contracts remain unsupported. The storage model
+top is not relabeled as a surveyed ground rim. `model.changes_path` can supply additional finished SHMM operations
 with separate evidence. Writer capability holds are distinct from source-data
 holds. Existing-floor dependencies, rewiring, shape conversion, pressure parameters
 and existing-vertex replacement are unsupported by this adapter.
