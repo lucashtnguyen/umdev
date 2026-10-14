@@ -120,6 +120,28 @@ New field names and additional observation mappings require config changes only.
 A new language or complex grammar can require a registered parser extension.
 Parameterization and raw text are recorded in each observation.
 
+The implemented inline grammar is one elevation, an optional parenthesized compass
+direction and an optional diameter. Elevation unit text may include a feet mark
+(`'`); it is interpreted as feet and must be compatible with the configured
+observation elevation unit. Explicit diameter suffixes must likewise agree with the
+configured observation diameter unit.
+
+An omitted diameter suffix is accepted only after an explicit parenthesized compass
+direction. The observation's configured `units.diameter` supplies that suffix; the
+parser does not infer inches from magnitude or utility-specific conventions.
+An elevation followed by `(SE), 12` therefore has an unambiguous configured size,
+while an unqualified two-number string remains unresolved. A diameter written as
+`12'` is not accepted as an inch abbreviation or silently reinterpreted. This rule
+is reusable syntax handling, not an asset-specific correction.
+
+Retain the original source attribute and raw description, parsed numeric values,
+configured/stated units and the parsing/default-unit rule used. Those observations
+continue through normal datum normalization, evidence ranking and port assignment;
+syntax acceptance alone does not establish the correct pipe end or surveyed basis.
+Multiple measurements, cap/drop/stub qualifiers, unsupported unit suffixes and
+competing assignments remain unresolved or explicitly held rather than having
+qualifiers stripped away.
+
 The `ports.assignment.precedence` list orders evidence families. `reviewed_override`
 references the decision ledger, `pipe_numeric` uses direct endpoint attributes,
 `normalized_port` uses the port table, and `inline_port` uses descriptions.
@@ -214,7 +236,10 @@ the current runner rejects it. Use ingestion/preparation for table review. Expli
 
 Reviewed overrides identify source keys, fields/ends, replacement values and units,
 rationale, evidence fingerprints and reviewer/date. They cannot silently modify
-source files. Changed evidence marks a prior override stale; the selected
+source files. A documented legacy-model rim may support an explicit private reviewed
+override with identity, source/model reference and vertical-basis evidence. This
+does not create an automatic legacy-model or nearest-node rim fallback in the core.
+Changed evidence marks a prior override stale; the selected
 reevaluation policy determines whether the asset proceeds provisionally or is held.
 
 A configured region is separate from network membership. The example's original-model

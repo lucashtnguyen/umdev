@@ -178,6 +178,19 @@ mark the application capability gap.
 
 ### Source observations and structure ports
 
+The current inline parser accepts one elevation with compatible explicit units
+(including a feet mark), optional parenthesized compass text, and optional diameter.
+A diameter without a written suffix is accepted only following an explicit
+parenthesized compass direction and uses configured observation diameter units.
+Bare ambiguous numeric pairs and a feet mark as a diameter suffix remain unsupported.
+Source text, parsed values and unit/defaulting provenance remain in the evidence;
+normal datum/identity/assignment QA still applies. Qualifiers and multiple-port
+descriptions must not be discarded simply to make a string parse.
+
+An existing model's documented rim can be retained through an explicit reviewed
+private override with source and datum evidence. No utility-specific legacy-rim or
+nearest-node fallback is introduced into reusable parameter logic.
+
 Support both normalized port tables and denormalized structure fields. A port-table
 row can identify structure, port, pipe, role, elevation, diameter, direction and datum.
 An inline field can contain a described elevation, bearing sector, size and qualifiers.

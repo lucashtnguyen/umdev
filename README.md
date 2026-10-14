@@ -27,6 +27,14 @@ network attribution context. Port assignment supports direct references, ranked
 evidence, compass hints and explicit provisional role/diameter fallback. Competing
 assignments or missing mandatory values remain holds.
 
+The inline parser recognizes a feet mark on an elevation and an omitted diameter
+suffix only when that diameter follows an explicit parenthesized compass direction.
+The configured observation units supply an omitted suffix; stated units must agree.
+For example, an elevation followed by `(SE), 12` can use the configured diameter
+unit, while a bare pair of numbers remains ambiguous and `12'` is not an accepted
+diameter suffix. Original source text and parsing/unit provenance remain traceable.
+Qualified, capped/drop or multiple-port text still requires supported interpretation.
+
 Configured floor/rim sources, individual pipe-end inverts, lengths, diameters and
 material-to-Manning-n policies produce finished parameters. Depth is rim minus floor.
 DEPTH offsets are pipe-end invert minus node floor; ELEVATION offsets are absolute

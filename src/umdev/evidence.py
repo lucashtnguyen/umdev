@@ -19,9 +19,9 @@ COMPASS_DEGREES = {"N": 0.0, "NE": 45.0, "E": 90.0, "SE": 135.0,
                    "S": 180.0, "SW": 225.0, "W": 270.0, "NW": 315.0}
 _NUMBER = r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)"
 _INLINE = re.compile(
-    rf'^\s*(?P<elevation>{_NUMBER})\s*(?P<elevation_unit>ft|feet|m)?\s*'
+    rf'^\s*(?P<elevation>{_NUMBER})\s*(?P<elevation_unit>ft|feet|m|\x27|′)?\s*'
     rf'(?:\(\s*(?P<direction>NE|NW|SE|SW|N|E|S|W)\s*\))?\s*,?\s*'
-    rf'(?:(?P<diameter>{_NUMBER})\s*(?P<diameter_unit>"|in(?:ch(?:es)?)?|mm|m))?\s*$', re.I)
+    rf'(?:(?P<diameter>{_NUMBER})\s*(?P<diameter_unit>"|″|in(?:ch(?:es)?)?|mm|m)?)?\s*$', re.I)
 
 
 def tolerance_metres(value: Any, default: float = 0.0) -> float:
@@ -43,41 +43,64 @@ def parse_inline_port(text: Any, *, node_id: str, key: str, role: str,
     Parameters
     ----------
     text : object
-        Raw inline description. The supported grammar is an elevation, optional
-        compass in parentheses, and optional size with unit suffix. Multiple,
-        drop, capped or qualified descriptions remain unresolved observations.
+        Raw inline description. Elevations accept an optional unit or feet mark.
+        Diameters accept explicit units; an omitted diameter suffix requires an
+        explicit parenthesized compass and uses the configured diameter unit.
     node_id, key, role : str
-        Declared structure identity, source-qualified observation identity and
-        hydraulic structure role (``in`` or ``out``).
+        Structure identity, source-qualified observation identity and hydraulic
+        structure role (in or out).
     elevation_unit, diameter_unit : str
-        Configured measurement units. Text cannot silently override them.
+        Declared measurement units. An explicit incompatible unit remains held.
     vertical_datum : str, optional
-        Declared vertical basis; an unknown basis remains unresolved later.
+        Source vertical basis; unknown bases remain unresolved downstream.
 
     Returns
     -------
     dict
-        Canonical SI port retaining raw text and parse findings. Valid measured
-        zero is retained. No arbitrary minimum of multiple numbers is selected.
+        SI values with exact raw text, parsing provenance and findings. Multiple,
+        drop, capped or qualified descriptions remain unresolved observations.
+
+    Notes
+    -----
+    A feet mark on an elevation is an explicit unit, never a numeric correction.
+    A feet mark on a diameter is not reinterpreted as inches. Bare numeric pairs
+    without a compass do not establish which number is the size. Negative/zero
+    elevations are valid; a nonpositive diameter remains invalid.
     """
-    raw = "" if text is None else str(text).strip()
+    raw = "" if text is None else str(text)
     match = _INLINE.fullmatch(raw)
     record = {"key": key, "structure_id": node_id, "role": role,
               "family": "inline_port", "raw": raw, "vertical_datum": vertical_datum,
               "invert": None, "diameter": None, "direction": None, "flags": []}
-    if not match:
+    if not match or (match["diameter"] is not None and
+                     match["diameter_unit"] is None and match["direction"] is None):
         record["flags"] = ["unrecognized_port_syntax"]
         return record
-    unit_aliases = {"feet": "ft", '"': "in", "inch": "in", "inches": "in"}
+    unit_aliases = {"feet": "ft", "'": "ft", "′": "ft",
+                    '"': "in", "″": "in", "inch": "in", "inches": "in"}
+    parsing = {"grammar_id": "elevation_direction_diameter_v1",
+               "elevation_unit": elevation_unit, "diameter_unit": diameter_unit,
+               "elevation_unit_basis": "explicit" if match["elevation_unit"] else "configured",
+               "diameter_unit_basis": ("not_present" if match["diameter"] is None else
+                                      "explicit" if match["diameter_unit"] else "configured_omitted_suffix"),
+               "normalizations": []}
+    record["parsing"] = parsing
     for name, configured in (("elevation_unit", elevation_unit), ("diameter_unit", diameter_unit)):
         stated = match[name]
         stated = unit_aliases.get(stated.lower(), stated.lower()) if stated else None
         if stated is not None and to_metres(1, stated) != to_metres(1, configured):
             record["flags"] = ["port_unit_conflict"]
             return record
+    if match["elevation_unit"] in {"'", "′"}:
+        parsing["normalizations"].append("elevation_feet_symbol")
+    if match["diameter"] is not None and match["diameter_unit"] is None:
+        parsing["normalizations"].append("diameter_unit_from_configuration")
+    # Unit defaults interpret missing notation without modifying measurements.
     record["invert"] = to_metres(float(match["elevation"]), elevation_unit)
-    if match["diameter"]:
+    if match["diameter"] is not None:
         record["diameter"] = to_metres(float(match["diameter"]), diameter_unit)
+        if record["diameter"] <= 0:
+            record["flags"] = ["invalid_port_diameter"]
     record["direction"] = match["direction"].upper() if match["direction"] else None
     return record
 
