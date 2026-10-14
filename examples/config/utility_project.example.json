@@ -1,0 +1,610 @@
+{
+  "schema_version": 1,
+  "kind": "umdev_project",
+  "metadata": {
+    "name": "synthetic_utility",
+    "author": "Lucas HT Nguyen",
+    "contact": "https://github.com/lucashtnguyen",
+    "date": "2026-10-14",
+    "status": "draft_example_not_executable"
+  },
+  "extends": [],
+  "sources": {
+    "network": {
+      "format": "geopackage",
+      "path": "../../data/synthetic_network.gpkg",
+      "read_only": true
+    },
+    "port_schedule": {
+      "format": "csv",
+      "path": "../../data/synthetic_ports.csv",
+      "read_only": true
+    }
+  },
+  "datasets": {
+    "pipes": {
+      "source": "network",
+      "table": "PipeSegments",
+      "entity": "pipe",
+      "id_field": "SegmentCode",
+      "filters": [],
+      "fields": {
+        "asset_id": {
+          "source": "SegmentCode",
+          "type": "identifier",
+          "trim": true
+        },
+        "from_node": {
+          "source": "StartStructure",
+          "type": "identifier",
+          "trim": true
+        },
+        "to_node": {
+          "source": "EndStructure",
+          "type": "identifier",
+          "trim": true
+        },
+        "model_id": {
+          "source": "SimulationLink",
+          "type": "identifier",
+          "missing": [
+            null,
+            ""
+          ]
+        },
+        "diameter": {
+          "source": "Bore_mm",
+          "type": "number",
+          "unit": "mm",
+          "missing": [
+            null,
+            -999
+          ]
+        },
+        "length": {
+          "source": "SurveyLength_m",
+          "type": "number",
+          "unit": "m",
+          "missing": [
+            null,
+            -999
+          ]
+        },
+        "upstream_invert": {
+          "source": "StartInvert_m",
+          "type": "number",
+          "unit": "m",
+          "missing": [
+            null,
+            -999
+          ],
+          "zero_is_missing": false
+        },
+        "downstream_invert": {
+          "source": "EndInvert_m",
+          "type": "number",
+          "unit": "m",
+          "missing": [
+            null,
+            -999
+          ],
+          "zero_is_missing": false
+        },
+        "material": {
+          "source": "WallMaterial",
+          "type": "string",
+          "missing": [
+            null,
+            ""
+          ]
+        },
+        "status": {
+          "source": "Lifecycle",
+          "type": "string",
+          "missing": [
+            null,
+            ""
+          ]
+        },
+        "pipe_kind": {
+          "source": "HydraulicType",
+          "type": "string",
+          "missing": [
+            null,
+            ""
+          ]
+        }
+      },
+      "domains": {
+        "status": {
+          "method": "configured_map",
+          "values": {
+            "OPER": "active",
+            "PLAN": "planned",
+            "RETIRED": "abandoned"
+          },
+          "unmapped": "unknown"
+        },
+        "pipe_kind": {
+          "method": "configured_map",
+          "values": {
+            "G": "gravity",
+            "FM": "force_main"
+          },
+          "unmapped": "unknown"
+        },
+        "material": {
+          "method": "configured_map",
+          "values": {
+            "P": "PVC",
+            "C": "CONCRETE"
+          },
+          "unmapped": "retain_raw_with_flag"
+        }
+      },
+      "geometry": {
+        "field": "geometry",
+        "declared_crs": {
+          "epsg": 32610
+        },
+        "linear_unit": "m",
+        "m_ordinate": "measure_only",
+        "z_ordinate": "retain_not_hydraulic",
+        "multipart": "hold",
+        "curves": "hold"
+      }
+    },
+    "structures": {
+      "source": "network",
+      "table": "AccessNodes",
+      "entity": "node",
+      "id_field": "StructureCode",
+      "filters": [],
+      "fields": {
+        "asset_id": {
+          "source": "StructureCode",
+          "type": "identifier",
+          "trim": true
+        },
+        "floor": {
+          "source": "ChamberFloor_m",
+          "type": "number",
+          "unit": "m",
+          "missing": [
+            null,
+            -999
+          ],
+          "zero_is_missing": false
+        },
+        "rim": {
+          "source": "CoverLevel_m",
+          "type": "number",
+          "unit": "m",
+          "missing": [
+            null,
+            -999
+          ],
+          "zero_is_missing": false
+        },
+        "vertical_datum": {
+          "source": "HeightReference",
+          "type": "string",
+          "missing": [
+            null,
+            ""
+          ]
+        },
+        "status": {
+          "source": "Lifecycle",
+          "type": "string",
+          "missing": [
+            null,
+            ""
+          ]
+        },
+        "outlet_description": {
+          "source": "OutletNotes",
+          "type": "string",
+          "missing": [
+            null,
+            ""
+          ]
+        },
+        "inlet_description": {
+          "source": "InletNotes",
+          "type": "string",
+          "missing": [
+            null,
+            ""
+          ]
+        }
+      },
+      "domains": {
+        "status": {
+          "method": "configured_map",
+          "values": {
+            "OPER": "active",
+            "PLAN": "planned",
+            "RETIRED": "abandoned"
+          },
+          "unmapped": "unknown"
+        }
+      },
+      "geometry": {
+        "field": "geometry",
+        "declared_crs": {
+          "epsg": 32610
+        },
+        "linear_unit": "m"
+      }
+    },
+    "ports": {
+      "source": "port_schedule",
+      "table": null,
+      "entity": "port",
+      "id_field": "ObservationCode",
+      "filters": [],
+      "fields": {
+        "port_id": {
+          "source": "ObservationCode",
+          "type": "identifier"
+        },
+        "structure_id": {
+          "source": "NodeReference",
+          "type": "identifier"
+        },
+        "pipe_id": {
+          "source": "SegmentReference",
+          "type": "identifier",
+          "missing": [
+            null,
+            ""
+          ]
+        },
+        "role": {
+          "source": "ConnectionRole",
+          "type": "string"
+        },
+        "invert": {
+          "source": "PortLevel_m",
+          "type": "number",
+          "unit": "m",
+          "missing": [
+            null,
+            -999
+          ],
+          "zero_is_missing": false
+        },
+        "diameter": {
+          "source": "PortBore_mm",
+          "type": "number",
+          "unit": "mm",
+          "missing": [
+            null,
+            -999
+          ]
+        },
+        "direction": {
+          "source": "BearingLabel",
+          "type": "string",
+          "missing": [
+            null,
+            ""
+          ]
+        },
+        "vertical_datum": {
+          "source": "HeightReference",
+          "type": "string",
+          "missing": [
+            null,
+            ""
+          ]
+        }
+      },
+      "domains": {
+        "role": {
+          "method": "configured_map",
+          "values": {
+            "ENTER": "in",
+            "LEAVE": "out"
+          },
+          "unmapped": "unknown"
+        }
+      }
+    }
+  },
+  "units": {
+    "canonical_engineering": "SI"
+  },
+  "model": {
+    "adapter": "swmm",
+    "baseline": "../../models/synthetic_baseline.inp",
+    "encoding": "utf-8",
+    "baseline_metadata": {
+      "horizontal_crs": {
+        "epsg": 32610
+      },
+      "map_unit": "m",
+      "vertical_datum": "LOCAL_TEST_DATUM"
+    },
+    "target": {
+      "flow_units": "LPS",
+      "length_unit": "m",
+      "link_offsets": "DEPTH",
+      "map_crs": {
+        "epsg": 32610
+      },
+      "map_unit": "m",
+      "vertical_datum": "LOCAL_TEST_DATUM"
+    },
+    "unsupported_operations": "hold"
+  },
+  "identity": {
+    "source_key_components": [
+      "source",
+      "dataset",
+      "row_id"
+    ],
+    "connectivity": {
+      "method": "endpoint_fields",
+      "pipe_dataset": "pipes",
+      "node_dataset": "structures"
+    },
+    "model_association": {
+      "methods": [
+        "mapped_model_id",
+        "explicit_crosswalk"
+      ],
+      "crosswalk_path": null,
+      "spatial_candidates": {
+        "enabled": false,
+        "tolerance": {
+          "value": 0.6,
+          "unit": "m"
+        }
+      }
+    }
+  },
+  "ports": {
+    "observations": [
+      {
+        "id": "normalized_ports",
+        "dataset": "ports",
+        "parser": "normalized_port_row_v1"
+      },
+      {
+        "id": "structure_out",
+        "dataset": "structures",
+        "field": "outlet_description",
+        "parser": "elevation_direction_diameter_v1",
+        "role": "out",
+        "units": {
+          "elevation": "m",
+          "diameter": "mm"
+        }
+      },
+      {
+        "id": "structure_in",
+        "dataset": "structures",
+        "field": "inlet_description",
+        "parser": "elevation_direction_diameter_v1",
+        "role": "in",
+        "units": {
+          "elevation": "m",
+          "diameter": "mm"
+        }
+      }
+    ],
+    "assignment": {
+      "precedence": [
+        "reviewed_override",
+        "pipe_numeric",
+        "normalized_port",
+        "inline_port"
+      ],
+      "direction": "hint",
+      "unique_role_diameter_fallback": {
+        "enabled": true,
+        "category": "provisional",
+        "qa_flag": "port_direction_mismatch"
+      },
+      "competing_candidates": "hold",
+      "numeric_text_conflict": "prefer_ranked_with_flag",
+      "endpoint_tolerance": {
+        "value": 0.6,
+        "unit": "m"
+      },
+      "diameter_tolerance": {
+        "value": 3,
+        "unit": "mm"
+      },
+      "direction_half_sector_deg": 22.5,
+      "elevation_conflict_tolerance": {
+        "value": 0.03,
+        "unit": "m"
+      }
+    }
+  },
+  "elevations": {
+    "target_datum": "LOCAL_TEST_DATUM",
+    "transforms": [
+      {
+        "id": "same_declared_test_datum",
+        "source_datum": "LOCAL_TEST_DATUM",
+        "target_datum": "LOCAL_TEST_DATUM",
+        "method": "identity",
+        "verified": false,
+        "basis": "Fictional shared local datum for this synthetic example; no field survey claim."
+      }
+    ],
+    "allow_provisional": true,
+    "unknown_or_mixed_datum": "hold_absolute_assignment"
+  },
+  "parameters": {
+    "nodes": {
+      "floor_methods": [
+        "reviewed_override",
+        "structure_floor",
+        "unique_active_outgoing_port"
+      ],
+      "rim_methods": [
+        "reviewed_override",
+        "structure_rim"
+      ],
+      "missing_floor_or_rim": "hold",
+      "estimators": []
+    },
+    "pipes": {
+      "length_methods": [
+        "reviewed_override",
+        "attribute_length",
+        "geometry_length"
+      ],
+      "diameter_methods": [
+        "reviewed_override",
+        "attribute_diameter"
+      ],
+      "shape": "CIRCULAR",
+      "missing_required_value": "hold"
+    }
+  },
+  "roughness": {
+    "policy_id": "synthetic_material_policy_v1",
+    "status": "proposed_not_calibrated",
+    "parameter": "manning_n",
+    "rules": {
+      "PVC": {
+        "aliases": [
+          "PVC",
+          "Polyvinyl Chloride"
+        ],
+        "value": 0.013,
+        "reference_range": [
+          0.011,
+          0.015
+        ],
+        "source": "EPA SWMM 5.2 Appendix A.7",
+        "source_url": "https://nepis.epa.gov/Exe/ZyPURL.cgi?Dockey=P10145M6.TXT",
+        "assumptions": [
+          "Smooth gravity-pipe interior; condition unverified."
+        ]
+      },
+      "CONCRETE": {
+        "aliases": [
+          "CONCRETE",
+          "Concrete Pipe"
+        ],
+        "value": 0.013,
+        "reference_range": [
+          0.011,
+          0.015
+        ],
+        "source": "EPA SWMM 5.2 Appendix A.7",
+        "source_url": "https://nepis.epa.gov/Exe/ZyPURL.cgi?Dockey=P10145M6.TXT",
+        "assumptions": [
+          "Ordinary concrete pipe; lining and deposits unverified."
+        ]
+      }
+    },
+    "unknown_material": {
+      "policy": "explicit_assumption",
+      "value": 0.013,
+      "category": "assumed",
+      "basis": "Synthetic demonstration fallback; an actual project must supply its reviewed policy.",
+      "qa_flag": "assumed_roughness_unknown_material"
+    },
+    "pressure_parameters": {
+      "policy": "require_separate_contract"
+    }
+  },
+  "scenarios": {
+    "existing": {
+      "include_statuses": [
+        "active"
+      ],
+      "exclude_statuses": [
+        "planned",
+        "abandoned"
+      ],
+      "unknown_status": "hold"
+    },
+    "future": {
+      "include_statuses": [
+        "active",
+        "planned"
+      ],
+      "exclude_statuses": [
+        "abandoned"
+      ],
+      "unknown_status": "hold"
+    }
+  },
+  "selection": {
+    "scenario": "existing",
+    "scope": {
+      "method": "baseline_map_extent",
+      "buffer": {
+        "value": 0,
+        "unit": "m"
+      },
+      "boundary_crossers": "hold"
+    },
+    "attribution_context": "full_source_network",
+    "asset_filters": []
+  },
+  "qa": {
+    "profile": "best_available_with_flags",
+    "allow_categories": [
+      "observed",
+      "interpreted",
+      "provisional",
+      "estimated",
+      "assumed"
+    ],
+    "rules": {
+      "port_direction_mismatch": {
+        "severity": "warning"
+      },
+      "adverse_gravity_grade": {
+        "severity": "warning"
+      },
+      "pipe_crown_above_rim": {
+        "severity": "warning"
+      },
+      "disconnected_component": {
+        "severity": "warning"
+      },
+      "provisional_vertical_basis": {
+        "severity": "warning"
+      },
+      "assumed_roughness_unknown_material": {
+        "severity": "warning"
+      }
+    },
+    "readback_absolute_tolerance": {
+      "value": 1e-09,
+      "unit": "m"
+    },
+    "engine": {
+      "enabled": false,
+      "executable": null,
+      "version_library": null,
+      "expected_version": null,
+      "external_resources": "require_original_or_explicit_substitutions"
+    }
+  },
+  "review": {
+    "overrides_path": null,
+    "changed_evidence": "mark_stale_and_re_evaluate"
+  },
+  "publication": {
+    "mode": "supported_subnetwork",
+    "output_directory": "../../runs/synthetic_utility",
+    "overwrite_sources": false,
+    "formats": [
+      "json",
+      "csv"
+    ],
+    "retain_effective_config": true
+  }
+}
