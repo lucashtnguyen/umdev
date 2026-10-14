@@ -1,0 +1,130 @@
+{
+  "extends": [
+    "common.json"
+  ],
+  "sources": {
+    "network": {
+      "format": "json_packet",
+      "path": "utility_a.json",
+      "read_only": true
+    }
+  },
+  "datasets": {
+    "pipes": {
+      "source": "network",
+      "table": "GravitySegments",
+      "entity": "pipe",
+      "id_field": "segment_text",
+      "fields": {
+        "asset_id": {
+          "source": "segment_text",
+          "type": "identifier"
+        },
+        "from_node": {
+          "source": "start_access",
+          "type": "identifier"
+        },
+        "to_node": {
+          "source": "finish_access",
+          "type": "identifier"
+        },
+        "diameter": {
+          "source": "bore_mm",
+          "type": "number",
+          "unit": "mm"
+        },
+        "length": {
+          "source": "survey_m",
+          "type": "number",
+          "unit": "m"
+        },
+        "material": {
+          "source": "wall",
+          "type": "string"
+        },
+        "status": {
+          "source": "service",
+          "type": "string"
+        },
+        "pipe_kind": {
+          "source": "type",
+          "type": "string"
+        }
+      },
+      "geometry": {
+        "field": "shape",
+        "declared_crs": {
+          "epsg": 3857
+        },
+        "linear_unit": "m"
+      }
+    },
+    "structures": {
+      "source": "network",
+      "table": "AccessCovers",
+      "entity": "node",
+      "id_field": "access_text",
+      "fields": {
+        "asset_id": {
+          "source": "access_text",
+          "type": "identifier"
+        },
+        "floor": {
+          "source": "base_m",
+          "type": "number",
+          "unit": "m"
+        },
+        "rim": {
+          "source": "cover_m",
+          "type": "number",
+          "unit": "m"
+        },
+        "vertical_datum": {
+          "source": "basis",
+          "type": "string"
+        },
+        "outlet_description": {
+          "source": "leaves",
+          "type": "string"
+        },
+        "inlet_description": {
+          "source": "enters",
+          "type": "string"
+        }
+      },
+      "geometry": {
+        "field": "shape",
+        "declared_crs": {
+          "epsg": 3857
+        },
+        "linear_unit": "m"
+      }
+    }
+  },
+  "ports": {
+    "observations": [
+      {
+        "id": "inline_out",
+        "dataset": "structures",
+        "field": "outlet_description",
+        "parser": "elevation_direction_diameter_v1",
+        "role": "out",
+        "units": {
+          "elevation": "m",
+          "diameter": "mm"
+        }
+      },
+      {
+        "id": "inline_in",
+        "dataset": "structures",
+        "field": "inlet_description",
+        "parser": "elevation_direction_diameter_v1",
+        "role": "in",
+        "units": {
+          "elevation": "m",
+          "diameter": "mm"
+        }
+      }
+    ]
+  }
+}

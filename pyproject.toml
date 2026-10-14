@@ -1,0 +1,36 @@
+# Author: Lucas HT Nguyen
+# Contact: https://github.com/lucashtnguyen
+# Date: 2026-10-14
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "umdev"
+version = "0.1.0"
+description = "Configurable utility GIS evidence preparation and hydraulic model QA"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+authors = [{name = "Lucas HT Nguyen"}]
+dependencies = ["hymo>=0.2.1", "shmm>=0.1.2", "pyproj>=3.6,<4"]
+
+[project.urls]
+Repository = "https://github.com/lucashtnguyen/umdev"
+Contact = "https://github.com/lucashtnguyen"
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+gis = ["geopandas"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["umdev*"]
+
+[tool.setuptools.package-data]
+umdev = ["schemas/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

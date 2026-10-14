@@ -4,10 +4,44 @@
 - Contact: [GitHub](https://github.com/lucashtnguyen)
 - Date: 2026-10-14
 
-Status: Draft v0.1 for review. Manually maintained.
-The interfaces, records and configuration below are proposed contracts.
+Status: Implementation specification v0.2. Manually maintained.
+The 0.1.0 runtime subset below is implemented. Broader requirements and roadmap
+items remain design targets, not complete-runtime capability claims.
 
 ## Summary
+
+### Implemented 0.1.0 boundary
+
+The callable Python 3.12 package implements JSON configuration/overlays,
+JSON-packet/CSV ingestion, SI normalization, directed endpoint-field identity,
+ranked port evidence, direction hint/strict policies, scoped reviewed overrides,
+floors/rims/depths, individual pipe-end offsets, configured lengths/diameters,
+gravity Manning-n policies, scenario/region selection, SHMM handoff/publication,
+both manual diffs, prepared-profile readback and engineering QA.
+
+Use `run_project(config_path, output_directory=None)` or lower-level
+`load_config`, `ingest_sources` and `prepare_network_from_dict`.
+`models.py` supplies `compile_handoff`, `instructions_from_handoff`,
+`verify_prepared_profiles` and `candidate_engineering_qa`.
+See the [README](../README.md) for runnable examples and exact artifacts.
+
+Native GeoJSON/GeoPackage/File Geodatabase adapters remain unavailable;
+externally exported inspected packets are the GIS bridge. pyproj validates
+projected CRS/axes/units; global reprojection is unsupported. The writer compiles
+supported circular gravity-pipe/junction operations against an existing compatible
+SWMM baseline. Pressure parameters, noncircular additions, spatial asset matching,
+aggregation, existing-floor dependency edits, renames/deletes/rewires,
+existing-vertex replacement and new model creation remain unsupported.
+
+`supported_subnetwork` publishes supported complete assignments and reports holds.
+`complete_request` rejects missing mandatory assignments and candidate engineering
+holds. `geometry_review` publication, interactive map/profile renderers and generic
+estimators remain future capabilities. Completion separates edit integrity from
+engineering status and optional engine results; it does not establish calibration.
+
+The sections below retain the broader target engineering design. Features beyond
+this implemented boundary remain roadmap work, even when described in a design
+example or acceptance requirement.
 
 ### Purpose and end goal
 
@@ -80,9 +114,10 @@ card inventory.
 11. Report applied assignments, findings, held assets and revisions together.
     A reviewer can correct a decision and rerun without editing generated files.
 
-Prepare-only, comparison-only, candidate-build and post-build QA are separate
-callable workflows. Configuration can also request map/table review products when
-a hydraulic candidate cannot be built.
+Current callable stages include ingestion/preparation, plan compilation,
+candidate build and post-build QA. SHMM comparison is independently callable.
+Dedicated map/profile products and geometry-only publication remain future targets
+when a hydraulic candidate cannot be built.
 
 ### Best available evidence and readiness
 
@@ -350,7 +385,7 @@ prepare it. Adapter availability and source-packet versions are in the run manif
 Feature-service access and additional vendor formats are extensions with read-only
 snapshot and authentication contracts.
 
-### Proposed package structure and interfaces
+### Package structure and extension targets
 
 Keep the computational core independent of GIS drivers, ArcGIS licensing and the
 model writer. Proposed components:
@@ -367,9 +402,11 @@ model writer. Proposed components:
 | models | hymo reading and SHMM instruction translation; capability checks |
 | reports | JSON/CSV and later HTML/profile/GIS review products |
 
-A proposed callable sequence is configuration resolution, source inspection,
-normalization, preparation, plan compilation, candidate application and candidate QA.
-Exact Python API names will be specified during phase 1; these are not existing APIs.
+The implemented callable sequence resolves configuration, ingests and prepares
+observations, compiles instructions, publishes/readbacks the candidate and performs
+QA. Public API names are listed in the implemented boundary above. Automatic
+mapping generation and a general extension registry remain future work; configured
+parser/transform IDs currently form a closed supported set.
 
 Adapters return records plus schema metadata and content fingerprints. Parser,
 transform and estimator extensions use named, trusted registered implementations.
@@ -431,7 +468,14 @@ Use pytest, hand calculations, realistic synthetic topology, invalid-input cases
 dimensionally equivalent examples. Test policy changes as well as numeric outputs.
 Do not test only whether a generated model can be read.
 
-### Implementation phases
+### Implementation roadmap and remaining acceptance
+
+The 0.1.0 runtime implements the supported subset of phases 1 through 5, with
+synthetic schema-equivalence and model readback tests. It does not claim all broad
+acceptance requirements are complete. Native-driver/spatial and pressure extensions,
+dependent existing-floor changes, generic estimators, interactive review products
+and additional utility/engine cases remain open. Actual run reports establish
+which assignments and operations were applied.
 
 1. **Contract and fixtures:** review this spec; define JSON Schema, immutable canonical
    records and proposed APIs; create two synthetic GIS schema fixtures and configuration
@@ -451,7 +495,7 @@ The first useful release is complete when A01 through A15 pass and the private p
 replay A17 produces a coherent candidate and traceable holds. Engine execution is optional
 unless enabled for that run. Later features must remain named capability gaps.
 
-### Decisions for specification review
+### Remaining design decisions
 
 Confirm the proposed first-release boundaries, JSON configuration/overlay model,
 provisional assignment defaults, floor policy choices and the distinction between

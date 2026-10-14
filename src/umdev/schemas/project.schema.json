@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lucashtnguyen/umdev/schemas/project.schema.json",
+  "title": "umdev schema version 1 supported project configuration",
+  "description": "Author Lucas HT Nguyen; contact https://github.com/lucashtnguyen; date 2026-10-14. Structural contract; Python semantic validation additionally checks engineering policies, references, units and driver capabilities.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "kind"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "kind": {
+      "const": "umdev_project"
+    },
+    "extends": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "contact": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/source"
+      }
+    },
+    "datasets": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/dataset"
+      }
+    },
+    "units": {
+      "type": "object"
+    },
+    "model": {
+      "type": "object"
+    },
+    "identity": {
+      "type": "object"
+    },
+    "ports": {
+      "type": "object"
+    },
+    "elevations": {
+      "type": "object"
+    },
+    "parameters": {
+      "type": "object"
+    },
+    "roughness": {
+      "type": "object"
+    },
+    "scenarios": {
+      "type": "object"
+    },
+    "selection": {
+      "type": "object"
+    },
+    "qa": {
+      "type": "object"
+    },
+    "review": {
+      "type": "object"
+    },
+    "publication": {
+      "type": "object"
+    },
+    "extensions": {
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "required": [
+        "format",
+        "path"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "enum": [
+            "json_packet",
+            "json",
+            "csv",
+            "geojson",
+            "geopackage",
+            "file_geodatabase"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "read_only": {
+          "const": true
+        },
+        "encoding": {
+          "type": "string"
+        },
+        "delimiter": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1
+        },
+        "extensions": {
+          "type": "object"
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "required": [
+        "source",
+        "type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "identifier",
+            "number",
+            "string"
+          ]
+        },
+        "trim": {
+          "type": "boolean"
+        },
+        "missing": {
+          "type": "array"
+        },
+        "zero_is_missing": {
+          "type": "boolean"
+        },
+        "unit": {
+          "enum": [
+            "m",
+            "mm",
+            "in",
+            "ft",
+            "us_survey_ft",
+            "dimensionless",
+            "degrees"
+          ]
+        },
+        "extensions": {
+          "type": "object"
+        }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "required": [
+        "source",
+        "entity",
+        "id_field",
+        "fields"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string"
+        },
+        "table": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "entity": {
+          "enum": [
+            "pipe",
+            "node",
+            "port"
+          ]
+        },
+        "id_field": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/field"
+          },
+          "description": "Canonical identity and parameter names plus arbitrary ASCII identifier text fields explicitly referenced by an inline port observation for this dataset. Semantic validation rejects unknown unreferenced names."
+        },
+        "filters": {
+          "type": "array"
+        },
+        "domains": {
+          "type": "object"
+        },
+        "geometry": {
+          "type": "object"
+        },
+        "vertical_datum": {
+          "type": "string"
+        },
+        "extensions": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

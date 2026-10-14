@@ -1,0 +1,9 @@
+# Author: Lucas HT Nguyen
+# Contact: https://github.com/lucashtnguyen
+# Date: 2026-10-14
+include README.md LICENSE
+recursive-include docs *.md
+recursive-include examples *.py *.json *.inp
+recursive-include tests *.py *.json *.csv
+prune examples/minimal/runs
+global-exclude __pycache__ *.py[cod]

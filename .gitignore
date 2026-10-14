@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Caller-owned runs and local project material (2026-10-14).
+/runs/
+/examples/**/runs/
+/.local/
+/private/

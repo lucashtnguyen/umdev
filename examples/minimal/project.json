@@ -1,0 +1,306 @@
+{
+  "schema_version": 1,
+  "kind": "umdev_project",
+  "metadata": {
+    "name": "synthetic_end_to_end_example",
+    "author": "Lucas HT Nguyen",
+    "contact": "https://github.com/lucashtnguyen",
+    "date": "2026-10-14"
+  },
+  "units": {
+    "canonical_engineering": "SI"
+  },
+  "elevations": {
+    "target_datum": "SYNTHETIC_DATUM",
+    "transforms": [
+      {
+        "id": "same",
+        "source_datum": "SYNTHETIC_DATUM",
+        "target_datum": "SYNTHETIC_DATUM",
+        "method": "identity",
+        "verified": true,
+        "basis": "Synthetic fixture basis, no actual utility source."
+      }
+    ],
+    "allow_provisional": true
+  },
+  "parameters": {
+    "nodes": {
+      "floor_methods": [
+        "structure_floor"
+      ],
+      "rim_methods": [
+        "structure_rim"
+      ],
+      "missing_floor_or_rim": "hold",
+      "estimators": []
+    },
+    "pipes": {
+      "length_methods": [
+        "attribute_length"
+      ],
+      "diameter_methods": [
+        "attribute_diameter"
+      ],
+      "shape": "CIRCULAR",
+      "missing_required_value": "hold"
+    }
+  },
+  "roughness": {
+    "policy_id": "synthetic",
+    "parameter": "manning_n",
+    "rules": {
+      "PVC": {
+        "aliases": [
+          "PVC"
+        ],
+        "value": 0.013,
+        "assumptions": [
+          "Synthetic constant for test."
+        ]
+      }
+    },
+    "unknown_material": {
+      "policy": "hold"
+    },
+    "pressure_parameters": {
+      "policy": "require_separate_contract"
+    }
+  },
+  "scenarios": {
+    "existing": {
+      "include_statuses": [
+        "active"
+      ],
+      "exclude_statuses": [
+        "retired"
+      ],
+      "unknown_status": "hold"
+    }
+  },
+  "selection": {
+    "scenario": "existing",
+    "scope": {
+      "method": "all"
+    },
+    "attribution_context": "full_source_network",
+    "asset_filters": []
+  },
+  "qa": {
+    "allow_categories": [
+      "observed",
+      "interpreted",
+      "provisional",
+      "assumed"
+    ],
+    "engine": {
+      "enabled": false
+    },
+    "readback_absolute_tolerance": {
+      "value": 1e-09,
+      "unit": "m"
+    }
+  },
+  "publication": {
+    "mode": "supported_subnetwork",
+    "overwrite_sources": false,
+    "output_directory": "runs",
+    "formats": [
+      "json",
+      "csv"
+    ],
+    "retain_effective_config": true
+  },
+  "ports": {
+    "assignment": {
+      "precedence": [
+        "pipe_numeric",
+        "normalized_port",
+        "inline_port"
+      ],
+      "direction": "hint",
+      "unique_role_diameter_fallback": {
+        "enabled": true,
+        "category": "provisional",
+        "qa_flag": "port_direction_mismatch"
+      },
+      "competing_candidates": "hold",
+      "numeric_text_conflict": "prefer_ranked_with_flag",
+      "diameter_tolerance": {
+        "value": 1,
+        "unit": "mm"
+      },
+      "direction_half_sector_deg": 22.5,
+      "elevation_conflict_tolerance": {
+        "value": 0.01,
+        "unit": "m"
+      }
+    },
+    "observations": [
+      {
+        "id": "inline_out",
+        "dataset": "structures",
+        "field": "outlet_description",
+        "parser": "elevation_direction_diameter_v1",
+        "role": "out",
+        "units": {
+          "elevation": "m",
+          "diameter": "mm"
+        }
+      },
+      {
+        "id": "inline_in",
+        "dataset": "structures",
+        "field": "inlet_description",
+        "parser": "elevation_direction_diameter_v1",
+        "role": "in",
+        "units": {
+          "elevation": "m",
+          "diameter": "mm"
+        }
+      }
+    ]
+  },
+  "model": {
+    "adapter": "swmm",
+    "target": {
+      "flow_units": "LPS",
+      "length_unit": "m",
+      "link_offsets": "DEPTH",
+      "map_crs": {
+        "epsg": 3857
+      },
+      "map_unit": "m",
+      "vertical_datum": "SYNTHETIC_DATUM"
+    },
+    "baseline": "baseline.inp",
+    "encoding": "utf-8",
+    "baseline_metadata": {
+      "horizontal_crs": {
+        "epsg": 3857
+      },
+      "map_unit": "m",
+      "vertical_datum": "SYNTHETIC_DATUM"
+    }
+  },
+  "sources": {
+    "network": {
+      "format": "json_packet",
+      "path": "source_packet.json",
+      "read_only": true
+    }
+  },
+  "datasets": {
+    "pipes": {
+      "source": "network",
+      "table": "GravitySegments",
+      "entity": "pipe",
+      "id_field": "segment_text",
+      "fields": {
+        "asset_id": {
+          "source": "segment_text",
+          "type": "identifier"
+        },
+        "from_node": {
+          "source": "start_access",
+          "type": "identifier"
+        },
+        "to_node": {
+          "source": "finish_access",
+          "type": "identifier"
+        },
+        "diameter": {
+          "source": "bore_mm",
+          "type": "number",
+          "unit": "mm"
+        },
+        "length": {
+          "source": "survey_m",
+          "type": "number",
+          "unit": "m"
+        },
+        "material": {
+          "source": "wall",
+          "type": "string"
+        },
+        "status": {
+          "source": "service",
+          "type": "string"
+        },
+        "pipe_kind": {
+          "source": "type",
+          "type": "string"
+        }
+      },
+      "geometry": {
+        "field": "shape",
+        "declared_crs": {
+          "epsg": 3857
+        },
+        "linear_unit": "m"
+      }
+    },
+    "structures": {
+      "source": "network",
+      "table": "AccessCovers",
+      "entity": "node",
+      "id_field": "access_text",
+      "fields": {
+        "asset_id": {
+          "source": "access_text",
+          "type": "identifier"
+        },
+        "floor": {
+          "source": "base_m",
+          "type": "number",
+          "unit": "m"
+        },
+        "rim": {
+          "source": "cover_m",
+          "type": "number",
+          "unit": "m"
+        },
+        "vertical_datum": {
+          "source": "basis",
+          "type": "string"
+        },
+        "outlet_description": {
+          "source": "leaves",
+          "type": "string"
+        },
+        "inlet_description": {
+          "source": "enters",
+          "type": "string"
+        }
+      },
+      "geometry": {
+        "field": "shape",
+        "declared_crs": {
+          "epsg": 3857
+        },
+        "linear_unit": "m"
+      }
+    }
+  },
+  "identity": {
+    "source_key_components": [
+      "source",
+      "dataset",
+      "row_id"
+    ],
+    "connectivity": {
+      "method": "endpoint_fields",
+      "pipe_dataset": "pipes",
+      "node_dataset": "structures"
+    },
+    "model_association": {
+      "methods": [
+        "asset_id"
+      ],
+      "crosswalk_path": null,
+      "spatial_candidates": {
+        "enabled": false
+      }
+    }
+  }
+}

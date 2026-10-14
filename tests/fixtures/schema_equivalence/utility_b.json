@@ -1,0 +1,71 @@
+{
+  "datasets": {
+    "SWR_CONDUIT_INVENTORY": {
+      "metadata": {
+        "crs": {
+          "epsg": 3857
+        },
+        "linear_unit": "m"
+      },
+      "records": [
+        {
+          "FACILITY_NO": "0007",
+          "USMH": "001",
+          "DSMH": "002",
+          "NOMINAL_IN": 11.811023622047244,
+          "ASBUILT_FT": 32.808398950131235,
+          "MAT_CODE": 17,
+          "LIFE_CODE": 2,
+          "TYPE_CODE": 1,
+          "shape": {
+            "paths": [
+              [
+                [
+                  0.0,
+                  0.0,
+                  999
+                ],
+                [
+                  0.0,
+                  10.0,
+                  888
+                ]
+              ]
+            ],
+            "hasM": true
+          }
+        }
+      ]
+    },
+    "MH_REGISTER": {
+      "metadata": {
+        "crs": {
+          "epsg": 3857
+        },
+        "linear_unit": "m"
+      },
+      "records": [
+        {
+          "FACILITY_NO": "001",
+          "SUMP_FT": 32.808398950131235,
+          "COVER_FT": 39.37007874015748,
+          "DATUM": "SYNTHETIC_DATUM",
+          "shape": {
+            "x": 0.0,
+            "y": 0.0
+          }
+        },
+        {
+          "FACILITY_NO": "002",
+          "SUMP_FT": 29.527559055118108,
+          "COVER_FT": 36.08923884514436,
+          "DATUM": "SYNTHETIC_DATUM",
+          "shape": {
+            "x": 0.0,
+            "y": 10.0
+          }
+        }
+      ]
+    }
+  }
+}

@@ -4,11 +4,30 @@
 - Contact: [GitHub](https://github.com/lucashtnguyen)
 - Date: 2026-10-14
 
+Status: Implemented in umdev 0.1.0 with SHMM >=0.1.2 and hymo >=0.2.1.
+
 ## Summary
 
 umdev owns the engineering assignments and scenario plan. SHMM owns the comparison
 between the baseline, the explicit requested updates and the model actually written.
 Both preview and written-model diffs are required products of a candidate build.
+
+### Implemented application boundary
+
+`run_project` freezes a handoff with `models.compile_handoff`, produces both
+SHMM comparisons, verifies prepared-to-written profiles and writes completion
+only after integrity checks. Sources/config/outputs stay in private workspaces.
+
+Prepared network objects compile only supported circular gravity conduits and
+junctions. `model.changes_path` can supply additional finished SHMM operations
+with separate evidence. Writer capability holds are distinct from source-data
+holds. Existing-floor dependencies, rewiring, shape conversion, pressure parameters
+and existing-vertex replacement are unsupported by this adapter.
+
+`supported_subnetwork` publishes complete supported objects and lists held
+requests. `complete_request` requires mandatory assignments and candidate holds
+to be clear. Neither mode establishes engineering acceptance. `geometry_review`
+publication remains future work.
 
 ### Handoff contract
 
@@ -25,6 +44,9 @@ A version-1 JSON handoff contains:
 | changes | Serialized explicit SHMM Change instructions including expected old values |
 | vertex_changes | Serialized ordered SHMM VertexChange instructions |
 | evidence | Source-key-indexed assignment basis, source references, category, units and QA findings |
+| application_holds | Objects excluded by writer capabilities, with reasons |
+| side_input_hashes | Finished-change/crosswalk/review fingerprints checked before completion |
+| applied_source_keys, model_ids | Explicit applied membership and source-to-target identities |
 
 The handoff is data, not executable code. Model IDs and values are finished and in
 target model units. Null required values, inferred deletes, implicit rewiring and
@@ -60,7 +82,9 @@ text. No-op instructions remain explicit.
 A comparison mismatch is an unsuccessful application verification, even if the
 file parses or the SWMM engine returns success. Keep diagnostic artifacts separate
 from a verified completion record. File integrity is distinct from umdev engineering
-QA and from engine/hydraulic acceptance.
+QA and from engine/hydraulic acceptance. Completion reports
+`engineering_status` independently and records whether an engine ran;
+`calibration_acceptance` remains unestablished.
 
 ### Manual review
 
@@ -75,16 +99,21 @@ in the private project workspace. Public tests contain synthetic networks.
 
 ## Developer README
 
+The orchestrator is `umdev.run_project(config_path, output_directory=None)`.
+Lower-level handoff/readback functions live in `umdev.models`.
+Project configuration `schema_version` is integer `1`; the serialized handoff
+and SHMM comparison schema versions are string `"1"`.
+
 The callable SHMM contract is `preview_model_diff`,
 `compare_written_model` and `write_diff_reports`. The adapter instantiates SHMM
 Change/VertexChange records; it does not write INP text itself. Use
 `preview_changes`/`edit_model` for the existing preserving transaction.
 
-Expected build order: prepare -> freeze handoff -> preview diff -> publish candidate
+Implemented build order: prepare -> freeze handoff -> preview diff -> publish candidate
 -> read actual file -> written-model diff -> umdev engineering QA -> completion
 manifest. Engine checking is optional and recorded separately.
 
-Tests must alter the written file independently to prove detection of unrequested
+SHMM regression tests alter the written file independently to prove detection of unrequested
 values, missing changes, geometry-order changes and preserved-text changes. A second
 test must establish that exact no-op and repeated-section inputs are reported
 faithfully. No approval prompt is introduced merely because a candidate has ordinary

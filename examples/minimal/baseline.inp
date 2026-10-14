@@ -1,0 +1,22 @@
+; Synthetic preserved baseline. Author: Lucas HT Nguyen
+; Contact: https://github.com/lucashtnguyen Date: 2026-10-14
+[TITLE]
+Synthetic baseline
+[OPTIONS]
+FLOW_UNITS LPS
+LINK_OFFSETS DEPTH
+[JUNCTIONS]
+OLD 20 2
+[OUTFALLS]
+OUT 19 FREE
+[CONDUITS]
+OLD_LINK OLD OUT 10 0.013 0 0
+[XSECTIONS]
+OLD_LINK CIRCULAR 0.3 0 0 0
+[COORDINATES]
+OLD -20 0
+OUT -10 0
+[VERTICES]
+[REPORT]
+NODES ALL
+LINKS ALL

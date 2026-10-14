@@ -1,0 +1,77 @@
+{
+  "datasets": {
+    "GravitySegments": {
+      "metadata": {
+        "crs": {
+          "epsg": 3857
+        },
+        "linear_unit": "m"
+      },
+      "records": [
+        {
+          "segment_text": "0007",
+          "start_access": "001",
+          "finish_access": "002",
+          "bore_mm": 300,
+          "survey_m": 10,
+          "wall": "PVC",
+          "service": "active",
+          "type": "gravity",
+          "shape": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                0,
+                0
+              ],
+              [
+                0,
+                10
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    "AccessCovers": {
+      "metadata": {
+        "crs": {
+          "epsg": 3857
+        },
+        "linear_unit": "m"
+      },
+      "records": [
+        {
+          "access_text": "001",
+          "base_m": 10,
+          "cover_m": 12,
+          "basis": "SYNTHETIC_DATUM",
+          "leaves": "10 m (N), 300 mm",
+          "enters": null,
+          "shape": {
+            "type": "Point",
+            "coordinates": [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "access_text": "002",
+          "base_m": 9,
+          "cover_m": 11,
+          "basis": "SYNTHETIC_DATUM",
+          "leaves": null,
+          "enters": "9 m (S), 300 mm",
+          "shape": {
+            "type": "Point",
+            "coordinates": [
+              0,
+              10
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

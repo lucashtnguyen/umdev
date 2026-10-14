@@ -4,10 +4,44 @@
 - Contact: [GitHub](https://github.com/lucashtnguyen)
 - Date: 2026-10-14
 
-Status: Draft v0.1. This defines proposed schema version 1; no configuration loader
-or JSON Schema is implemented yet.
+Status: Version-1 configuration contract with an implemented umdev 0.1.0 subset.
+`load_config` and `src/umdev/schemas/project.schema.json` now exist. Runtime
+semantic validation governs current capabilities; broader design examples may
+include unavailable drivers or future policies.
 
 ## Summary
+
+### Implemented configuration subset
+
+Use [examples/minimal/project.json](../examples/minimal/project.json) and
+[examples/run_minimal.py](../examples/run_minimal.py) for executable synthetic use.
+The broader GeoPackage design example below is not a current-driver demonstration.
+
+| Concern | Current behavior |
+| --- | --- |
+| Sources | `json_packet`/`json`, CSV; native GIS format IDs raise unavailable-capability diagnostics |
+| Overlays | Ordered `extends`, recursive dictionaries, atomic lists/nulls, declaration-relative resource paths and cycle detection |
+| Units/CRS | Canonical SI metre values; declared source units; pyproj projected CRS/axis/unit checks; no reprojection |
+| Identity | Explicit endpoint fields, asset/model IDs and optional JSON crosswalk; no spatial candidate matching |
+| Port parsers | `normalized_port_row_v1` and `elevation_direction_diameter_v1` with configured fields/roles/units |
+| Direction | `hint` permits configured unique role/diameter provisional fallback; `strict` withholds mismatching/unverified declared directions |
+| Datum | `identity` or signed `constant_offset` with basis, verification, precedence and optional `asset_ids`/`source_keys` |
+| Floors | `reviewed_override`, `structure_floor`, `unique_active_outgoing_port`, or explicitly configured `lowest_active_port`/`minimum_active_port` |
+| Rims | `reviewed_override` or `structure_rim` |
+| Pipe measurements | Reviewed/attribute length and diameter; explicit `geometry_length` alternative |
+| Roughness | Gravity `manning_n` with exact aliases and optional reference ranges; unknown material holds or uses an explicit assumption |
+| Scope | All, asset IDs, canonical-metre bounds or baseline-map extent; optional buffer; crossing linework held without clipping |
+| Review overrides | Node floor/rim and pipe upstream/downstream invert/length/diameter, with source-record hash, units, rationale, reviewer/date |
+| Publication | `supported_subnetwork` or `complete_request`; `geometry_review` is not implemented by the candidate runner |
+
+Unsupported methods fail explicitly. Additional observation text fields can be
+mapped through registered inline-parser observations; core source-field names
+do not need modification. Ordinary project aliases/policies remain configuration.
+New format drivers, grammars or algorithms require implementation and tests.
+
+The remaining design discussion includes future survey transforms, polygon scope,
+generic estimators, feature services and native review products. Those paragraphs
+describe extension requirements, not implemented capabilities.
 
 ### Configuration purpose
 
@@ -31,7 +65,7 @@ available datasets or implemented adapters.
 | extends | Ordered configuration fragments or presets; resolution rules below |
 | sources | Format, location and read-only access for each named input |
 | datasets | Source/table binding, canonical entity, fields, IDs, domains, filters and geometry metadata |
-| units | Internal engineering unit convention; SI proposed |
+| units | Internal engineering unit convention; SI implemented |
 | model | Adapter, explicit baseline, declared baseline metadata, target conventions and capability handling |
 | identity | Source-key composition, connectivity and model association methods |
 | ports | Observation parsers, declared roles, units and assignment policy |
@@ -76,7 +110,7 @@ coordinates. M/Z, curves, multipart handling and supported conversions are expli
 
 ### Port observations and evidence precedence
 
-The example uses two proposed registered parser IDs:
+The runtime implements two registered parser IDs:
 
 - `normalized_port_row_v1` consumes canonical port-table fields.
 - `elevation_direction_diameter_v1` parses a described elevation, compass direction
@@ -108,14 +142,17 @@ describe matching uncertainty and are not universal engineering thresholds.
 field is distinct from an outgoing-port-derived floor. If a method yields competing
 valid floors, do not choose the smallest number as an unrecorded tie breaker.
 
-Named estimators are opt-in, with inputs, applicability, method/version and units.
-An empty estimator list disables estimation. An estimated value may be applied with
-flags when project policy permits; it cannot be called a surveyed value.
+General named estimators are future work. The current loader rejects a nonempty
+`estimators` list. Explicit floor methods are recorded policy derivations, not
+generic interpolation. Selecting a minimum-active-port floor is an explicit
+configured derivation, not an invisible tie breaker.
 
 The target `link_offsets` determines serialization: DEPTH uses port minus node floor,
 while ELEVATION uses absolute port elevation. Rim minus floor sets junction depth.
 All three heights are placed on the same target basis before assembly. Existing-node
-floor changes require recomputation/preservation of attached link ends and depths.
+floor changes would require all attached ends/depths to be preserved and are
+currently unsupported by the writer adapter. Existing floors stay fixed;
+supported rim changes can update depth without moving the floor.
 
 Required missing floor or rim remains held in the example. To produce geometry
 review, export GIS/table products. Do not insert hydraulic zeros merely to force
@@ -130,8 +167,8 @@ not claimed to be encoded in the INP.
 
 A transformation includes its source/target datum, registered method, applicability,
 provenance, verification and parameters where needed. Constant offsets additionally
-declare offset value and unit. Survey or spatial methods declare their resources
-and fingerprints. Conflicting overlapping rules require an explicit precedence;
+declare offset value and unit. Future survey/spatial methods must declare resources and fingerprints;
+those transformation methods are not implemented. Conflicting overlapping rules require an explicit precedence;
 there is no global municipality-specific offset.
 
 The example's identity transformation retains a fictional declared local datum;
@@ -147,8 +184,9 @@ declared, and attached to a compatible hydraulic parameter and pipe type.
 
 The example's unknown-material fallback is an explicit synthetic assumption,
 not a core default or a calibrated value. Projects can replace it with a hold or
-a reviewed assumption. Condition, lining, deposits and rehabilitation can supersede
-the nominal material policy through explicit observations or reviewed overrides.
+a reviewed assumption. General condition/lining/rehabilitation policies remain extension targets.
+The current review ledger does not implement roughness overrides; use configured
+material assumptions or separately reviewed finished model instructions.
 
 Pressure pipes require a separate parameter contract. Manning n cannot populate a
 Hazen-Williams C-factor or Darcy-Weisbach roughness-height field. Missing pressure
@@ -156,8 +194,10 @@ parameters remain visible even when gravity material rules are otherwise usable.
 
 ### Findings and export completeness
 
-`qa.profile` is a policy identifier, not a hidden bundle of hard-coded values.
-The effective configuration must expand every preset into explicit resolved rules.
+`qa.rules` configures implemented finding severity and review/hold disposition.
+`qa.profile` can retain a policy label; no preset expansion is implemented.
+Configure effective rules explicitly. Required-data/writer failures are distinct
+from configurable engineering warning severity.
 
 The example treats direction mismatch, actual adverse grade, crown above rim,
 disconnection and declared provisional datum as warnings. Engineering findings
@@ -167,8 +207,8 @@ independent of configurable warning severity.
 
 `supported_subnetwork` builds supported complete assignments and reports every held
 request and disconnected component. `complete_request` requires all requested
-mandatory parameters. `geometry_review` produces spatial/table artifacts without
-a hydraulic candidate. Explicit test assumptions must remain per-object decisions.
+mandatory parameters. `geometry_review` is a future publication target;
+the current runner rejects it. Use ingestion/preparation for table review. Explicit test assumptions must remain per-object decisions.
 
 ### Review changes and scope
 
@@ -179,7 +219,8 @@ reevaluation policy determines whether the asset proceeds provisionally or is he
 
 A configured region is separate from network membership. The example's original-model
 extent is one optional geographic policy, not a universal definition of a utility
-service area. Polygon scope and explicit asset lists are alternatives. Clipping
+service area. Explicit asset lists and rectangular bounds are supported alternatives;
+polygon scope is a future extension. Clipping
 requires a topology operation, not just a geometry predicate.
 
 ## Developer README
@@ -190,7 +231,7 @@ Relative paths resolve against the file declaring them. Paths imported through
 `extends` retain their declaration file as provenance. Filesystem paths and source
 metadata containing private information stay in private project workspaces.
 
-Proposed merge rules are deterministic: resolve extends left to right, then apply
+Implemented merge rules are deterministic: resolve extends left to right, then apply
 the project file; recursively merge dictionaries, replace lists atomically, and treat
 null as an explicit nullable value rather than deletion. Reject cycles and unresolved
 references. ID-keyed policy dictionaries allow a project to override one rule without
@@ -202,10 +243,11 @@ ambiguous aliases, duplicate IDs, invalid tolerances, unsupported model units an
 source/output path collisions before publication. A source field absent from a table
 is a mapping error; an optional measurement absent in a valid row is a data condition.
 
-The first implementation will add JSON Schema and semantic validation. JSON parsing
-alone does not validate GIS schemas, joins, units, engineering applicability or writer
-capabilities. Schema discovery should generate a draft mapping without assuming the
-meaning of unfamiliar fields.
+JSON Schema and semantic validation are implemented. Ingestion checks mapped
+source fields and declared spatial metadata, including projected CRS/units through
+pyproj. JSON parsing alone does not establish engineering applicability or writer
+support. Automatic discovery and draft mapping generation remain future work.
+A schema-accepted format name does not prove a native driver is implemented.
 
 ### Configuration artifacts
 
@@ -215,8 +257,8 @@ Record file/feature-service snapshot hashes and all derived decisions for the ru
 Credentials and authentication tokens are never config values; use a separately
 configured adapter authentication provider.
 
-Implementation acceptance requires a second synthetic example with different
-table/field names and normalized versus inline ports. The same core must produce
-equivalent canonical parameters from both through configuration alone. Source-format
+The synthetic `tests/fixtures/schema_equivalence` cases exercise different
+table/field names and normalized versus inline ports through configuration alone.
+These establish regression coverage, not universal utility-schema acceptance. Source-format
 capability discovery must report unavailable drivers rather than silently dropping
 a source.

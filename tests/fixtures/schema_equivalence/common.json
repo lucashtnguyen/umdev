@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "kind": "umdev_project",
+  "metadata": {
+    "name": "synthetic_schema_equivalence",
+    "author": "Lucas HT Nguyen",
+    "contact": "https://github.com/lucashtnguyen",
+    "date": "2026-10-14"
+  },
+  "units": {
+    "canonical_engineering": "SI"
+  },
+  "elevations": {
+    "target_datum": "SYNTHETIC_DATUM",
+    "transforms": [
+      {
+        "id": "same",
+        "source_datum": "SYNTHETIC_DATUM",
+        "target_datum": "SYNTHETIC_DATUM",
+        "method": "identity",
+        "verified": true,
+        "basis": "Synthetic fixture basis, no actual utility source."
+      }
+    ],
+    "allow_provisional": true
+  },
+  "parameters": {
+    "nodes": {
+      "floor_methods": [
+        "structure_floor"
+      ],
+      "rim_methods": [
+        "structure_rim"
+      ],
+      "missing_floor_or_rim": "hold",
+      "estimators": []
+    },
+    "pipes": {
+      "length_methods": [
+        "attribute_length"
+      ],
+      "diameter_methods": [
+        "attribute_diameter"
+      ],
+      "shape": "CIRCULAR",
+      "missing_required_value": "hold"
+    }
+  },
+  "roughness": {
+    "policy_id": "synthetic",
+    "parameter": "manning_n",
+    "rules": {
+      "PVC": {
+        "aliases": [
+          "PVC"
+        ],
+        "value": 0.013,
+        "assumptions": [
+          "Synthetic constant for test."
+        ]
+      }
+    },
+    "unknown_material": {
+      "policy": "hold"
+    },
+    "pressure_parameters": {
+      "policy": "require_separate_contract"
+    }
+  },
+  "scenarios": {
+    "existing": {
+      "include_statuses": [
+        "active"
+      ],
+      "exclude_statuses": [
+        "retired"
+      ],
+      "unknown_status": "hold"
+    }
+  },
+  "selection": {
+    "scenario": "existing",
+    "scope": {
+      "method": "all"
+    },
+    "attribution_context": "full_source_network",
+    "asset_filters": []
+  },
+  "qa": {
+    "allow_categories": [
+      "observed",
+      "interpreted",
+      "provisional",
+      "assumed"
+    ]
+  },
+  "publication": {
+    "mode": "supported_subnetwork",
+    "overwrite_sources": false
+  },
+  "ports": {
+    "assignment": {
+      "precedence": [
+        "pipe_numeric",
+        "normalized_port",
+        "inline_port"
+      ],
+      "direction": "hint",
+      "unique_role_diameter_fallback": {
+        "enabled": true,
+        "category": "provisional",
+        "qa_flag": "port_direction_mismatch"
+      },
+      "competing_candidates": "hold",
+      "numeric_text_conflict": "prefer_ranked_with_flag",
+      "diameter_tolerance": {
+        "value": 1,
+        "unit": "mm"
+      },
+      "direction_half_sector_deg": 22.5,
+      "elevation_conflict_tolerance": {
+        "value": 0.01,
+        "unit": "m"
+      }
+    }
+  },
+  "model": {
+    "adapter": "swmm",
+    "target": {
+      "flow_units": "LPS",
+      "length_unit": "m",
+      "link_offsets": "DEPTH",
+      "map_crs": {
+        "epsg": 3857
+      },
+      "map_unit": "m",
+      "vertical_datum": "SYNTHETIC_DATUM"
+    }
+  }
+}

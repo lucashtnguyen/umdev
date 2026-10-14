@@ -1,0 +1,175 @@
+{
+  "extends": [
+    "common.json"
+  ],
+  "sources": {
+    "network": {
+      "format": "json_packet",
+      "path": "utility_b.json",
+      "read_only": true
+    },
+    "observations": {
+      "format": "csv",
+      "path": "utility_b_ports.csv",
+      "read_only": true
+    }
+  },
+  "datasets": {
+    "pipes": {
+      "source": "network",
+      "table": "SWR_CONDUIT_INVENTORY",
+      "entity": "pipe",
+      "id_field": "FACILITY_NO",
+      "fields": {
+        "asset_id": {
+          "source": "FACILITY_NO",
+          "type": "identifier"
+        },
+        "from_node": {
+          "source": "USMH",
+          "type": "identifier"
+        },
+        "to_node": {
+          "source": "DSMH",
+          "type": "identifier"
+        },
+        "diameter": {
+          "source": "NOMINAL_IN",
+          "type": "number",
+          "unit": "in"
+        },
+        "length": {
+          "source": "ASBUILT_FT",
+          "type": "number",
+          "unit": "ft"
+        },
+        "material": {
+          "source": "MAT_CODE",
+          "type": "string"
+        },
+        "status": {
+          "source": "LIFE_CODE",
+          "type": "string"
+        },
+        "pipe_kind": {
+          "source": "TYPE_CODE",
+          "type": "string"
+        }
+      },
+      "domains": {
+        "material": {
+          "method": "configured_map",
+          "values": {
+            "17": "PVC"
+          },
+          "unmapped": "unknown"
+        },
+        "status": {
+          "method": "configured_map",
+          "values": {
+            "2": "active"
+          },
+          "unmapped": "unknown"
+        },
+        "pipe_kind": {
+          "method": "configured_map",
+          "values": {
+            "1": "gravity"
+          },
+          "unmapped": "unknown"
+        }
+      },
+      "geometry": {
+        "field": "shape",
+        "declared_crs": {
+          "epsg": 3857
+        },
+        "linear_unit": "m"
+      }
+    },
+    "structures": {
+      "source": "network",
+      "table": "MH_REGISTER",
+      "entity": "node",
+      "id_field": "FACILITY_NO",
+      "fields": {
+        "asset_id": {
+          "source": "FACILITY_NO",
+          "type": "identifier"
+        },
+        "floor": {
+          "source": "SUMP_FT",
+          "type": "number",
+          "unit": "ft"
+        },
+        "rim": {
+          "source": "COVER_FT",
+          "type": "number",
+          "unit": "ft"
+        },
+        "vertical_datum": {
+          "source": "DATUM",
+          "type": "string"
+        }
+      },
+      "geometry": {
+        "field": "shape",
+        "declared_crs": {
+          "epsg": 3857
+        },
+        "linear_unit": "m"
+      }
+    },
+    "ports": {
+      "source": "observations",
+      "table": null,
+      "entity": "port",
+      "id_field": "PORT_TAG",
+      "fields": {
+        "port_id": {
+          "source": "PORT_TAG",
+          "type": "identifier"
+        },
+        "structure_id": {
+          "source": "MH",
+          "type": "identifier"
+        },
+        "pipe_id": {
+          "source": "PIPE",
+          "type": "identifier"
+        },
+        "role": {
+          "source": "ROLE",
+          "type": "string"
+        },
+        "invert": {
+          "source": "LEVEL_FT",
+          "type": "number",
+          "unit": "ft"
+        },
+        "diameter": {
+          "source": "BORE_IN",
+          "type": "number",
+          "unit": "in"
+        },
+        "direction": {
+          "source": "BEARING",
+          "type": "string"
+        },
+        "vertical_datum": {
+          "source": "DATUM",
+          "type": "string"
+        }
+      }
+    }
+  },
+  "ports": {
+    "observations": [
+      {
+        "id": "table",
+        "dataset": "ports",
+        "parser": "normalized_port_row_v1"
+      }
+    ]
+  }
+}
