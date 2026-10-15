@@ -1,8 +1,9 @@
 """Engineering QA for prepared and reconstructed node/pipe profiles.
 
 Author: Lucas HT Nguyen
+Last modified by: Lucas HT Nguyen
 Contact: https://github.com/lucashtnguyen
-Date: 2026-10-14
+Date: 2026-10-15
 Manually maintained. Inputs and residuals use metres, grades are m/m.
 """
 from __future__ import annotations
@@ -32,6 +33,8 @@ def profile_findings(nodes: Sequence[Mapping[str, Any]], pipes: Sequence[Mapping
     Pipe grade = (upstream pipe invert - downstream pipe invert) / hydraulic
     length. Junction-floor differences are not a substitute. Gravity adverse
     grades are findings by default, not reasons to reverse pipe connectivity.
+    Crowns above synthetic placeholder rims use a separate review rule because
+    the placeholder is not a measured physical rim; the residual remains visible.
     """
     results = []
     tolerance = tolerance_metres(config.get("qa", {}).get("readback_absolute_tolerance"), default=1e-9)
@@ -66,9 +69,15 @@ def profile_findings(nodes: Sequence[Mapping[str, Any]], pipes: Sequence[Mapping
             node = node_map.get(pipe[node_field], {})
             rim = finite_number(node.get("rim_m"))
             if rim is not None and elevation + diameter > rim:
-                results.append(finding("pipe_crown_above_rim", pipe["key"], config,
+                placeholder = bool(node.get("has_placeholder_rim")) or node.get("assignments", {}).get("rim", {}).get("method") == "missing_rim_placeholder"
+                # A fictional rim cannot establish a source elevation conflict.
+                # Keep its crown residual visible under an independently
+                # configurable rule instead of inheriting measured-rim holds.
+                rule = "pipe_crown_above_placeholder_rim" if placeholder else "pipe_crown_above_rim"
+                results.append(finding(rule, pipe["key"], config,
                     endpoint=endpoint, node_id=pipe[node_field], unit="m",
-                    residual_m=elevation + diameter - rim))
+                    residual_m=elevation + diameter - rim,
+                    **({"rim_basis": "placeholder"} if placeholder else {})))
     return results
 
 

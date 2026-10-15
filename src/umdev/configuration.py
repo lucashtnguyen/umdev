@@ -281,7 +281,7 @@ def _validate_policies(data: dict[str, Any]) -> None:
                 raise ConfigurationError("Datum offset requires finite signed value and length unit")
     for entity in ("nodes", "pipes"):
         if entity in data.get("parameters", {}):
-            allowed = {"floor_methods", "rim_methods", "missing_floor_or_rim", "estimators", "update_existing_rims", "pressure_connections"} if entity == "nodes" else {"length_methods", "diameter_methods", "shape", "missing_required_value"}
+            allowed = {"floor_methods", "rim_methods", "missing_floor_or_rim", "estimators", "update_existing_rims", "pressure_connections", "missing_rim"} if entity == "nodes" else {"length_methods", "diameter_methods", "shape", "missing_required_value"}
             _keys(data["parameters"][entity], allowed, f"parameters.{entity}")
             if data["parameters"][entity].get("estimators"):
                 raise ConfigurationError("Named estimators are not implemented")
@@ -301,6 +301,33 @@ def _validate_policies(data: dict[str, Any]) -> None:
         raise ConfigurationError("Unsupported node-floor method")
     if set(node_policy.get("rim_methods", [])) - {"reviewed_override", "structure_rim"}:
         raise ConfigurationError("Unsupported node-rim method")
+    if "missing_rim" in node_policy:
+        missing_rim = _keys(node_policy["missing_rim"], {"mode", "placeholder", "basis"}, "parameters.nodes.missing_rim")
+        mode = missing_rim.get("mode", "hold")
+        if mode not in {"hold", "error", "placeholder"}:
+            raise ConfigurationError("Missing-rim mode must be hold, error or placeholder")
+        if mode != "placeholder":
+            if set(missing_rim) - {"mode"}:
+                raise ConfigurationError("Missing-rim placeholder and basis require placeholder mode")
+        else:
+            if not isinstance(missing_rim.get("basis"), str) or not missing_rim["basis"].strip():
+                raise ConfigurationError("Missing-rim placeholder requires an explicit basis")
+            placeholder = _keys(missing_rim.get("placeholder"), {"kind", "value", "unit", "vertical_datum"}, "missing-rim placeholder")
+            kind = placeholder.get("kind")
+            if kind != "depth":
+                raise ConfigurationError("Missing-rim placeholder kind must be depth; SWMM has no native absolute-rim field")
+            value = placeholder.get("value")
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ConfigurationError("Missing-rim placeholder value must be finite")
+            unit = placeholder.get("unit")
+            if unit != "model" and unit not in LENGTH_FACTORS:
+                raise ConfigurationError("Missing-rim placeholder requires a supported length unit or model")
+            if unit == "model" and data.get("model", {}).get("target", {}).get("length_unit") not in LENGTH_FACTORS:
+                raise ConfigurationError("Model-unit placeholder requires an explicit target length_unit")
+            if value <= 0:
+                raise ConfigurationError("Missing-rim placeholder depth must be positive")
+            if "vertical_datum" in placeholder:
+                raise ConfigurationError("Missing-rim placeholder depth cannot declare a vertical datum")
     if "pressure_connections" in node_policy:
         pressure_nodes = _keys(node_policy["pressure_connections"],
             {"classification", "surcharge_depth", "basis", "node_overrides", "model_node_overrides"}, "parameters.nodes.pressure_connections")

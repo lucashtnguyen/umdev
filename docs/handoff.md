@@ -186,3 +186,27 @@ the detailed pressure network has been modeled.
 Independent readback verifies force-main shape, coefficient and serialization units,
 CONDUITS coefficient, and every specified or preserved pressure-node surcharge.
 Missing pipe elevations, rims, roles or coefficients remain holds.
+
+### Missing-rim placeholder handoff
+
+A placeholder remains an assumed rim assignment with method
+`missing_rim_placeholder`, a `placeholder_rim` flag, the original missing value,
+policy, floor evidence and native depth quantity. Only accepted new-junction
+instructions write it. The adapter supplies literal configured MaxDepth for
+`unit=model`, avoiding round-trip floating-point spellings such as
+12.344999999999999. It supplies a finished SHMM `Change.comment` containing
+`UMDEV_PLACEHOLDER_RIM` and the native depth. SHMM owns comment serialization
+and exact preview/written comparisons. Existing profiles remain preserved.
+
+Run `placeholder_nodes.csv` includes held assignments as well as actually applied
+node identities. Candidate QA joins applied assumptions to actual written node
+IDs, so a placeholder cannot disappear merely because INP stores only numbers.
+Readback checks the literal MaxDepth token, its marker and the floor/rim profile.
+Completion counts placeholders separately from integrity status and always
+requires engineering review when any are applied.
+
+Known pipe crowns above a placeholder rim remain visible as
+`pipe_crown_above_placeholder_rim` review findings. They do not automatically inherit
+the hold rule for contradictory measured rims; projects can explicitly configure
+the placeholder rule as a hold. The actual written-model check uses the applied
+placeholder identities to retain this distinction.

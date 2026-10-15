@@ -354,3 +354,44 @@ high-surcharge junctions. Model defaults/options and the explicit pressure equat
 must agree. Review pressure membership and node settings in both QA registers and
 SHMM diffs. D-W Geom2 uses inches (US) or millimetres (SI), independently of diameter
 and surcharge model length units.
+
+### Missing rim action and native placeholders
+
+Configure `parameters.nodes.missing_rim` explicitly when missing rims should be
+handled differently from the existing default hold.
+
+| Key | Contract |
+| --- | --- |
+| mode | `hold` (default), `error`, or `placeholder` |
+| placeholder.kind | `depth`; SWMM has no native absolute-rim field |
+| placeholder.value | Finite positive depth; `12.345` is a recognizable sentinel |
+| placeholder.unit | `model` for literal target-unit depth, or an explicit supported length unit |
+| basis | Required nonempty rationale for placeholder mode |
+
+With `unit=model`, the configured number is written directly into MaxDepth in the
+INP. Thus 12.345 stays 12.345 in US and SI models and under DEPTH or ELEVATION link
+offsets. This is a synthetic model depth, not a conversion or surveyed rim elevation.
+Physical-unit quantities are also supported and converted into target units.
+Do not select an absolute elevation placeholder for SWMM: its junction record
+contains invert elevation plus maximum depth, not an independent rim field.
+
+The policy applies after final floor selection and baseline-profile preservation.
+It requires a genuinely absent source rim, a known floor, and an eligible new
+junction. It does not repair unknown datums, malformed source values, failed
+reviewed overrides or missing inverts. `qa.allow_categories` must permit `assumed`
+to apply a placeholder. Other profile, pressure-role, geometry and capability
+holds remain in effect. Hold omits dependent assets from a supported subnetwork;
+complete-request mode rejects held mandatory assets. Error raises before a run
+directory/candidate is created. A placeholder never overwrites an existing model
+junction or STORAGE profile.
+
+Review `placeholder_nodes.csv`, node assignments, inline `UMDEV_PLACEHOLDER_RIM`
+comments and both SHMM diffs. Completion reports applied and held placeholder-node
+counts. An applied placeholder forces engineering review even if its finding
+severity is configured as informational.
+
+Known pipe crowns above a placeholder rim remain visible as
+`pipe_crown_above_placeholder_rim` review findings. They do not automatically inherit
+the hold rule for contradictory measured rims; projects can explicitly configure
+the placeholder rule as a hold. The actual written-model check uses the applied
+placeholder identities to retain this distinction.

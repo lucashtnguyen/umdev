@@ -14,6 +14,7 @@ import math
 from typing import Any, Mapping, Sequence
 
 from .evidence import apply_reviewed_overrides, collect_structure_ports, normalize_elevation, resolve_ports, tolerance_metres
+from .placeholders import resolve_missing_rim
 from .qa import connectivity_findings, finding, profile_findings
 from .records import Assignment, Network, PreparedNetwork, finite_number, network_from_dict
 from .units import to_metres
@@ -421,6 +422,8 @@ def prepare_network(network: Network, config: Mapping[str, Any], *,
     SWMM DEPTH offset = absolute pipe end minus node floor. ELEVATION offset
     serializes the absolute pipe end instead. Maximum depth = rim minus floor.
     Missing mandatory evidence remains absent; hydraulic zero is never a fill.
+    A configured missing-rim placeholder is a separately flagged assumption above
+    a known floor, never a replacement source observation.
     Default new-project floors use structure port minima before local modeled
     pipe ends. Explicit legacy floor methods retain their configured semantics.
     Standalone preparation is provisional until the caller or prepare_project
@@ -503,6 +506,7 @@ def prepare_network(network: Network, config: Mapping[str, Any], *,
             # preserved hydraulic object; generic junction-rim policy cannot edit it.
             if model_section == "STORAGE" or not node_policy.get("update_existing_rims", False):
                 rim = Assignment(baseline_rim, "observed", "preserved_baseline_rim", evidence=(reference,))
+        rim = resolve_missing_rim(node, floor, rim, config, is_existing=baseline is not None)
         reasons = []
         pressure_connection = _pressure_connection(node, baseline, incidents[identity], selected,
                                                   node_policy.get("pressure_connections", {}))
@@ -537,6 +541,7 @@ def prepare_network(network: Network, config: Mapping[str, Any], *,
             reasons.append("rim_not_above_floor")
         row = {**deepcopy(node), "floor_m": floor.value, "rim_m": rim.value, "max_depth_m": depth,
                "is_existing": baseline is not None, "proposed_floor_assignment": proposed_floor,
+               "has_placeholder_rim": rim.method == "missing_rim_placeholder",
                "model_section": baseline.get("model_section", "JUNCTIONS") if baseline is not None else "JUNCTIONS",
                "disposition": "hold" if reasons else "include",
                "reasons": reasons, "assignments": {"floor": floor.to_dict(), "rim": rim.to_dict()}}

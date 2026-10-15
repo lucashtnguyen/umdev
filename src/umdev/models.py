@@ -453,6 +453,14 @@ def compile_handoff(document: SWMMDocument, prepared: Mapping[str, Any],
         name, source_key = target_node(row), row["key"]
         floor = from_metres(row["floor_m"], length_unit)
         depth = from_metres(row["max_depth_m"], length_unit)
+        placeholder = row.get("assignments", {}).get("rim", {}).get("method") == "missing_rim_placeholder"
+        comment = None
+        if placeholder:
+            declared = config["parameters"]["nodes"]["missing_rim"]["placeholder"]
+            # Preserve the literal native sentinel. Subtracting rim - invert and
+            # converting it back can otherwise serialize 12.344999999999999.
+            depth = declared["value"] if declared["unit"] in {"model", length_unit} else from_metres(to_metres(declared["value"], declared["unit"]), length_unit)
+            comment = f"UMDEV_PLACEHOLDER_RIM MaxDepth={depth} {length_unit}; synthetic rim, review required"
         surcharge_m = row.get("surcharge_depth_m") if identity in pressure_needed and row.get("pressure_connection", {}).get("role") == "sealed" else None
         evidence[source_key] = {"asset_id": identity, "assignments": row.get("assignments", {}),
             "units": fields_units, "pressure_connection": row.get("pressure_connection"), "surcharge_depth_m": surcharge_m if identity in pressure_needed else None, "qa_flags": [f for f in prepared.get("findings", []) if f.get("object_key") == source_key]}
@@ -495,7 +503,7 @@ def compile_handoff(document: SWMMDocument, prepared: Mapping[str, Any],
             new_values = {"invert_elevation": floor, "max_depth": depth}
             if surcharge_m is not None:
                 new_values["surcharge_depth"] = from_metres(surcharge_m, length_unit)
-            changes.append(Change("add", "JUNCTIONS", name, new_values, source_key))
+            changes.append(Change("add", "JUNCTIONS", name, new_values, source_key, comment=comment))
         if _key(name) not in coords:
             point = row.get("coordinates") or []
             if len(point) < 2 or any(not math.isfinite(float(v)) for v in point[:2]):
@@ -616,6 +624,8 @@ def verify_prepared_profiles(candidate: SWMMDocument, prepared: Mapping[str, Any
     nodes = {r["asset_id"]: r for r in prepared["nodes"]}
     applied = set(handoff["applied_source_keys"])
     checked_nodes, rows = set(), []
+    checked_placeholders = set()
+    new_junctions = {_key(change["object_id"]): change for change in handoff["changes"] if change["section"] == "JUNCTIONS" and change["action"] == "add"}
     for pipe in prepared["pipes"]:
         if pipe["key"] not in applied:
             continue
@@ -633,6 +643,14 @@ def verify_prepared_profiles(candidate: SWMMDocument, prepared: Mapping[str, Any
                     (floor + depth, node["rim_m"], "rim"), (port, pipe[end + "_invert_m"], "pipe-end invert")):
                 if not math.isclose(value, expected, rel_tol=0, abs_tol=tolerance):
                     raise ValueError(f"Written {label} differs from prepared evidence")
+            if node.get("assignments", {}).get("rim", {}).get("method") == "missing_rim_placeholder":
+                expected_depth = str(new_junctions[_key(model_id)]["values"]["max_depth"])
+                if raw.tokens[2] != expected_depth:
+                    raise ValueError("Written placeholder MaxDepth lost its literal sentinel")
+                line = candidate.lines[raw.line_index]
+                if "UMDEV_PLACEHOLDER_RIM" not in line or "MaxDepth=" + expected_depth not in line:
+                    raise ValueError("Written placeholder rim marker is missing")
+                checked_placeholders.add(model_id)
             checked_nodes.add(model_id)
             node_values.append(port)
         cross_section = xsections[_key(name)]
@@ -671,10 +689,11 @@ def verify_prepared_profiles(candidate: SWMMDocument, prepared: Mapping[str, Any
             observed = interpret_fields("JUNCTIONS", profile_nodes[_key(change["object_id"])])
             if not math.isclose(float(observed["surcharge_depth"]), change["values"]["surcharge_depth"], rel_tol=0, abs_tol=from_metres(tolerance, unit)):
                 raise ValueError("Written surcharge depth differs from pressure-connection policy")
-    return {"checked_nodes": len(checked_nodes), "checked_pipes": len(rows), "profiles": rows, "checked_surcharge_instructions": sum(change["section"] == "JUNCTIONS" and "surcharge_depth" in change["values"] for change in handoff["changes"])}
+    return {"checked_nodes": len(checked_nodes), "checked_pipes": len(rows), "profiles": rows, "checked_placeholder_nodes": len(checked_placeholders), "checked_surcharge_instructions": sum(change["section"] == "JUNCTIONS" and "surcharge_depth" in change["values"] for change in handoff["changes"])}
 
 
-def candidate_engineering_qa(document: SWMMDocument, config: Mapping[str, Any]) -> list[dict[str, Any]]:
+def candidate_engineering_qa(document: SWMMDocument, config: Mapping[str, Any], *,
+                             placeholder_node_ids: Sequence[str] = ()) -> list[dict[str, Any]]:
     """QA actual written node/pipe profiles and complete modeled connectivity.
 
     Notes
@@ -688,12 +707,14 @@ def candidate_engineering_qa(document: SWMMDocument, config: Mapping[str, Any]) 
     unit = config["model"]["target"]["length_unit"]
     convention = config["model"]["target"]["link_offsets"]
     nodes, floors = [], {}
+    placeholder_ids = {_key(identity) for identity in placeholder_node_ids}
     for section in _NODE_SECTIONS:
         for record in document.records(section):
             floor = to_metres(float(record.tokens[1]), unit)
             floors[_key(record.tokens[0])] = floor
             row = {"key": f"model/{section}/{record.tokens[0]}", "asset_id": _key(record.tokens[0]), "display_id": record.tokens[0],
-                   "floor_m": floor, "rim_m": None, "max_depth_m": None}
+                   "floor_m": floor, "rim_m": None, "max_depth_m": None,
+                   "has_placeholder_rim": section == "JUNCTIONS" and _key(record.tokens[0]) in placeholder_ids}
             if section in {"JUNCTIONS", "STORAGE"}:
                 depth = to_metres(float(record.tokens[2]) if len(record.tokens) > 2 else 0, unit)
                 row.update(rim_m=floor + depth, max_depth_m=depth)
@@ -740,3 +761,35 @@ def candidate_engineering_qa(document: SWMMDocument, config: Mapping[str, Any]) 
                 "node_ids": component["node_ids"], "outfall_ids": component["terminal_node_ids"],
                 "nominal_directed_topology": True})
     return profile_findings(nodes, profiles, config) + connectivity
+
+
+def placeholder_node_register(prepared: Mapping[str, Any], handoff: Mapping[str, Any],
+                              config: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """List applied and held synthetic rims with their native SWMM sentinel.
+
+    Notes
+    -----
+    SWMM JUNCTIONS always writes maximum depth above invert, independent of the
+    link offset convention. The original sentinel is kept in native model units
+    so a reviewer can recognize it directly in INP text. Source rims remain absent.
+    """
+    unit = config["model"]["target"]["length_unit"]
+    declaration = config.get("parameters", {}).get("nodes", {}).get("missing_rim", {})
+    applied = handoff.get("model_ids", {}).get("nodes", {})
+    result = []
+    for node in prepared.get("nodes", []):
+        assignment = node.get("assignments", {}).get("rim", {})
+        if assignment.get("method") != "missing_rim_placeholder":
+            continue
+        quantity = declaration["placeholder"]
+        depth = quantity["value"] if quantity["unit"] in {"model", unit} else from_metres(to_metres(quantity["value"], quantity["unit"]), unit)
+        result.append({"source_key": node["key"], "asset_id": node["asset_id"],
+            "model_id": applied.get(node["asset_id"], node.get("model_id")),
+            "disposition": "applied" if node["asset_id"] in applied else "held",
+            "field": "max_depth", "placeholder_kind": quantity["kind"],
+            "placeholder_value": quantity["value"], "configured_unit": quantity["unit"],
+            "model_max_depth": depth, "unit": unit,
+            "floor_m": node.get("floor_m"), "rim_m": node.get("rim_m"),
+            "max_depth_m": node.get("max_depth_m"), "basis": declaration["basis"],
+            "assignment": assignment, "source_rim_value": node.get("rim"), "source_rim_unchanged": True})
+    return result

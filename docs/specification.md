@@ -585,3 +585,17 @@ remain station-association holds. Missing geometry, pipe ends, rims or role evid
 remain visible holds. Both QA diffs, pressure accounting registers and independent
 readback are required. Detailed station reconstruction, pump curve changes, new
 storage and automatic profile estimation remain outside this extension.
+
+### Implemented missing-rim review placeholders (2026-10-15)
+
+New manholes with genuinely absent rims can be explicitly held, rejected by an
+exception, or generated with a configured positive placeholder depth above a known
+floor. The default remains hold. Native-unit placeholders write the exact sentinel
+(such as 12.345) into SWMM MaxDepth, with a finished inline marker. This applies
+under either link-offset convention because SWMM lacks a native absolute-rim field.
+Real source values, datum/review failures and existing profiles remain protected.
+Missing floors and other required evidence are not filled by this extension.
+Assumed categories, all remaining holds, explicit basis and source provenance
+remain enforceable. Every run publishes the applied/held placeholder register;
+candidate QA, both diffs and independent literal/profile readback identify actual
+placeholder nodes. Applied placeholders always require engineering review.

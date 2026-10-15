@@ -128,6 +128,28 @@ endpoints remain findings instead of guessed asset-ID matches. Pump/regulator
 operating conditions and hydraulic acceptance require separate engineering review.
 See [topology and island review](docs/topology.md) for the contract and checklist.
 
+### Missing manhole rims
+
+`parameters.nodes.missing_rim.mode` selects **hold** (default), **error**, or
+**placeholder**. Hold withholds the incomplete junction and its dependent pipes;
+error raises before publishing a model. Placeholder mode requires a positive
+explicit depth and its basis. It fills genuinely absent rims of new junctions
+with known inverts; real source rims, existing model profiles, missing floors,
+unresolved datums, invalid measurements and stale reviews retain their treatment.
+
+For a recognizable text sentinel, configure `placeholder.kind` as `depth`,
+`placeholder.value` as `12.345`, and `placeholder.unit` as `model`. SHMM writes
+literal **12.345** in the JUNCTIONS **MaxDepth** field, with an inline
+`UMDEV_PLACEHOLDER_RIM MaxDepth=12.345` comment. SWMM uses MaxDepth for junction
+rims even when LINK_OFFSETS is ELEVATION; known invert elevations are retained.
+The derived rim is invert plus depth, explicitly marked as an assumption.
+
+Every run lists applied and held placeholder assignments in `placeholder_nodes.csv`.
+Applied placeholders appear in candidate QA, both model diffs and the completion
+count; their engineering status requires review. Independent readback verifies the
+literal sentinel, marker and reconstructed profile. Placeholder geometry is for
+review and does not establish hydraulic acceptance. See [configuration](docs/configuration.md).
+
 ### Force mains and sealed connections
 
 Force mains require an explicit pressure-friction policy and endpoint roles.
@@ -170,7 +192,8 @@ surcharge, including preserved open receivers. See [pressure configuration](docs
   findings to be clear; neither mode establishes engineering acceptance.
 - The runner does not implement `geometry_review` publication, spatial asset
   matching, aggregation, generic estimators, native map/profile renderers or feature
-  services. Use ingestion/preparation for table review, not hydraulic placeholders.
+  services. Use ingestion/preparation for table review; the explicit missing-rim
+  policy is the only supported synthetic profile placeholder.
 - Material coefficients are configured assumptions. Unknown material holds or uses
   an explicit documented assumption; pressure coefficients cannot inherit Manning n.
 
@@ -213,3 +236,9 @@ roughness, scoped overrides, deterministic selection, source preservation, writt
 profiles, consolidated-ledger staleness and non-executable records, read-only project
 preparation, and SHMM diff integration. Engine paths/version must be explicitly enabled;
 simulation is not a default. No repository lint/format command is prescribed.
+
+Known pipe crowns above a placeholder rim remain visible as
+`pipe_crown_above_placeholder_rim` review findings. They do not automatically inherit
+the hold rule for contradictory measured rims; projects can explicitly configure
+the placeholder rule as a hold. The actual written-model check uses the applied
+placeholder identities to retain this distinction.

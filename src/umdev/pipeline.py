@@ -20,7 +20,7 @@ from typing import Any, Mapping
 from hymo import read_document
 
 from .configuration import load_config
-from .models import bind_model_identities, resolve_model_identity, validate_crosswalk, baseline_node_parameters, baseline_pipe_end_parameters, candidate_engineering_qa, compile_handoff, instructions_from_handoff, verify_prepared_profiles
+from .models import bind_model_identities, resolve_model_identity, validate_crosswalk, baseline_node_parameters, baseline_pipe_end_parameters, candidate_engineering_qa, placeholder_node_register, compile_handoff, instructions_from_handoff, verify_prepared_profiles
 from .parameters import DEFAULT_FLOOR_METHODS, prepare_network_from_dict
 from .reporting import json_value, stable_hash, write_csv, write_json, write_review_html
 from .qa import connectivity_findings
@@ -444,6 +444,8 @@ def run_project(config_path: str | Path, *, output_directory: str | Path | None 
     if mode not in {"supported_subnetwork", "complete_request"}:
         raise NotImplementedError("Candidate runner supports complete/subnetwork modes; use ingestion/preparation for geometry review")
     changes, vertices = instructions_from_handoff(handoff)
+    placeholder_nodes = placeholder_node_register(prepared, handoff, config)
+    applied_placeholders = [row for row in placeholder_nodes if row["disposition"] == "applied"]
     # Freeze planned bytes and evidence before creating any hydraulic candidate.
     preview = preview_model_diff(baseline, changes, vertex_changes=vertices,
                                 evidence=handoff["evidence"], expected_hash=baseline_hash)
@@ -463,6 +465,7 @@ def run_project(config_path: str | Path, *, output_directory: str | Path | None 
     write_json(output / "handoff.json", handoff)
     write_csv(output / "force_main_accounting.csv", handoff.get("force_main_accounting", []))
     write_csv(output / "pressure_connections.csv", handoff.get("pressure_nodes", []))
+    write_csv(output / "placeholder_nodes.csv", placeholder_nodes)
     if project["floor_donor_audit"] is not None:
         write_json(output / "floor_donor_audit.json", project["floor_donor_audit"])
     if project["decision_ledger"] is not None:
@@ -487,7 +490,16 @@ def run_project(config_path: str | Path, *, output_directory: str | Path | None 
         raise ValueError("Written-model diff disagrees with previewed instructions")
     profile_verification = verify_prepared_profiles(candidate, prepared, handoff, config)
     write_json(output / "profile_verification.json", profile_verification)
-    candidate_findings = candidate_engineering_qa(candidate, config)
+    candidate_findings = (candidate_engineering_qa(candidate, config,
+        placeholder_node_ids=[row["model_id"] for row in applied_placeholders])
+        if applied_placeholders else candidate_engineering_qa(candidate, config))
+    from .qa import finding
+    for node in applied_placeholders:
+        candidate_findings.append(finding("placeholder_rim", "model/JUNCTIONS/" + node["model_id"], config,
+            source_key=node["source_key"], asset_id=node["asset_id"], field="max_depth",
+            native_placeholder_value=node["model_max_depth"], native_unit=node["unit"],
+            rim_m=node["rim_m"], floor_m=node["floor_m"], assignment=node["assignment"],
+            basis=node["basis"]))
     baseline_findings = candidate_engineering_qa(baseline, config)
     identity = lambda row: (row["rule"], row["object_key"], row.get("endpoint"))
     previous = {identity(row) for row in baseline_findings}
@@ -525,7 +537,7 @@ def run_project(config_path: str | Path, *, output_directory: str | Path | None 
     engineering_holds = sum(row.get("disposition") == "hold" for row in candidate_findings)
     if mode == "complete_request" and engineering_holds:
         raise ValueError("Complete-request publication has written-model engineering holds")
-    engineering_status = "held" if engineering_holds else ("review_required" if any(row.get("severity") != "info" for row in candidate_findings) else "clear")
+    engineering_status = "held" if engineering_holds else ("review_required" if applied_placeholders or any(row.get("severity") != "info" for row in candidate_findings) else "clear")
     completion = {"status": "verified_model_update", "candidate": str(candidate_path),
         "review": str(output / "review.html"), "scenario": config["selection"]["scenario"],
         "config_sha256": resolved.sha256, "baseline_sha256": baseline_hash,
@@ -533,6 +545,8 @@ def run_project(config_path: str | Path, *, output_directory: str | Path | None 
         "applied_source_pipes": len(applied), "held_source_pipes": sum(row["disposition"] == "hold" and row["source_key"] in dispositions for row in membership),
         "scope_or_status_holds": sum(row["disposition"] == "hold" and row["source_key"] not in dispositions for row in membership),
         "new_junctions": sum(c.action == "add" and c.section == "JUNCTIONS" for c in changes),
+        "applied_placeholder_nodes": len(applied_placeholders),
+        "held_placeholder_nodes": len(placeholder_nodes) - len(applied_placeholders),
         "explicit_existing_updates": sum(c.action == "update" for c in changes),
         "preview_matches_written": True, "source_preservation": True,
         "engineering_findings": len(prepared["findings"]), "candidate_qa_findings": len(candidate_findings), "engine": engine,
