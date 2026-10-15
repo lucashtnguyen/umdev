@@ -128,6 +128,28 @@ endpoints remain findings instead of guessed asset-ID matches. Pump/regulator
 operating conditions and hydraulic acceptance require separate engineering review.
 See [topology and island review](docs/topology.md) for the contract and checklist.
 
+### Force mains and sealed connections
+
+Force mains require an explicit pressure-friction policy and endpoint roles.
+Hazen-Williams C and Darcy-Weisbach absolute roughness remain separate from the
+CONDUITS Manning field. The model equation must match the configured policy;
+pressure conduits require Dynamic Wave routing. No options are silently changed.
+Darcy-Weisbach Geom2 is written in **inches for US models or millimetres for SI**.
+
+A configured surcharge allowance applies only to sealed pressure junctions that
+are actually used by accepted force-main instructions, or identified internal
+connections in existing force-main reaches. Receiving gravity manholes and storage
+wet wells retain their settings. Terminal or mixed source connections require a
+reviewed role; missing elevations stay held. Surcharge allowance is an assumption,
+not a pressure rating. Exact source force-main endpoints matching existing pumps
+are held for station reconciliation to prevent adding passive bypass links.
+
+Each run includes `force_main_accounting.csv` and `pressure_connections.csv` with
+source/pump membership, held reasons, roles, original/expected surcharge and basis.
+The preview and written-model diffs cover the actual FORCE_MAIN and surcharge
+instructions; independent readback checks shape, friction coefficient, units and
+surcharge, including preserved open receivers. See [pressure configuration](docs/configuration.md).
+
 ### Capability limits
 
 - Implemented input formats: `json_packet`/`json` and `csv`. Native GeoJSON,
@@ -136,11 +158,11 @@ See [topology and island review](docs/topology.md) for the contract and checklis
 - Existing compatible SWMM baselines only. pyproj validates projected CRS/axes/units.
   Global reprojection and baseline datum conversion are unsupported. Configured
   identity/constant-offset observation transforms are separate traceable rules.
-- The adapter writes supported circular gravity conduits, cross sections, junctions,
+- The adapter writes supported circular gravity and explicitly parameterized force-main conduits, cross sections, junctions,
   coordinates and add-only ordered vertices. Existing STORAGE objects can serve
-  as gravity-pipe endpoints using their preserved model floor and top elevation;
+  as pipe endpoints using their preserved model floor and top elevation;
   storage records, curves, initial depths, coordinates and controls are not edited.
-  New storage objects, outfall-endpoint parameter contracts, pressure parameters, noncircular
+  New storage objects, outfall-endpoint parameter contracts, noncircular
   additions, deletes, renames, rewiring, existing-vertex replacement, existing-floor
   dependency edits and new model creation remain held or unsupported.
 - `supported_subnetwork` publishes supported complete objects and lists holds.

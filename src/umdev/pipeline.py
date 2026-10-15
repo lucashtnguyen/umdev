@@ -461,6 +461,8 @@ def run_project(config_path: str | Path, *, output_directory: str | Path | None 
     write_json(output / "canonical.json", canonical)
     write_json(output / "prepared.json", prepared)
     write_json(output / "handoff.json", handoff)
+    write_csv(output / "force_main_accounting.csv", handoff.get("force_main_accounting", []))
+    write_csv(output / "pressure_connections.csv", handoff.get("pressure_nodes", []))
     if project["floor_donor_audit"] is not None:
         write_json(output / "floor_donor_audit.json", project["floor_donor_audit"])
     if project["decision_ledger"] is not None:

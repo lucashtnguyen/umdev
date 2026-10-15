@@ -321,3 +321,36 @@ table/field names and normalized versus inline ports through configuration alone
 These establish regression coverage, not universal utility-schema acceptance. Source-format
 capability discovery must report unavailable drivers rather than silently dropping
 a source.
+
+### Explicit pressure contracts
+
+Set `roughness.pressure_parameters.policy` to `explicit_assumption` to enable
+pressure preparation. Supply `equation` (`H-W` or `D-W`), `coefficient`,
+`conduit_manning_n` and a nonempty `basis`. H-W coefficient is a positive
+dimensionless number; D-W coefficient is an explicit positive `{value, unit}`
+length quantity converted to canonical metres. For example, a synthetic H-W
+policy may explicitly declare coefficient 110 and CONDUITS Manning 0.012 with
+its engineering basis. These are example assumptions, never built-in defaults.
+Legacy `hold`/`require_separate_contract` policies continue to hold force mains.
+
+Set `parameters.nodes.pressure_connections` with `classification` (`explicit_roles`
+or `internal_force_main_only`), a `surcharge_depth` quantity, `basis` and optional
+`node_overrides` mapping source asset IDs to `sealed`, `open_discharge` or `wet_well`.
+Use `model_node_overrides` for explicit existing model IDs independently of source
+selection or crosswalks. Source and model roles for the same accepted endpoint must
+agree; conflicting roles fail preparation. Model IDs are checked against the baseline.
+For a US test allowing 999 feet above the rim, declare `{value: 999, unit: ft}`;
+SI models receive the equivalent depth, not an unconverted number.
+`internal_force_main_only` allows inference only with incoming and outgoing selected
+force mains and exclusively pressure-pipe incident context. Terminals and mixed
+connections need explicit roles. Existing STORAGE is preserved as wet well; creating
+a new wet well remains unsupported. Gravity pipes are not held solely because an
+incident force main has an unresolved pressure role. Only accepted force-main
+instructions can activate source-node surcharge changes.
+
+The corresponding baseline policy recognizes internal existing force-main/pump
+connections, while preserving receiving gravity nodes, wet wells and unrelated
+high-surcharge junctions. Model defaults/options and the explicit pressure equation
+must agree. Review pressure membership and node settings in both QA registers and
+SHMM diffs. D-W Geom2 uses inches (US) or millimetres (SI), independently of diameter
+and surcharge model length units.

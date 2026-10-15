@@ -19,14 +19,14 @@ Both preview and written-model diffs are required products of a candidate build.
 SHMM comparisons, verifies prepared-to-written profiles and writes completion
 only after integrity checks. Sources/config/outputs stay in private workspaces.
 
-Prepared network objects compile supported circular gravity conduits and
-junctions. Existing STORAGE endpoints may receive gravity-pipe connections using
+Prepared network objects compile supported circular gravity and explicit FORCE_MAIN
+conduits and junctions. Existing STORAGE endpoints may receive connections using
 preserved baseline floor/top parameters; no STORAGE, curve, coordinate or control
-updates are generated for those endpoints. New storage creation, pressure-pipe
-parameters and outfall-endpoint contracts remain unsupported. The storage model
+updates are generated for those endpoints. New storage creation and
+outfall-endpoint contracts remain unsupported. The storage model
 top is not relabeled as a surveyed ground rim. `model.changes_path` can supply additional finished SHMM operations
 with separate evidence. Writer capability holds are distinct from source-data
-holds. Existing-floor dependencies, rewiring, shape conversion, pressure parameters
+holds. Existing-floor dependencies, rewiring, shape conversion
 and existing-vertex replacement are unsupported by this adapter.
 
 `supported_subnetwork` publishes complete supported objects and lists held
@@ -50,6 +50,8 @@ A version-1 JSON handoff contains:
 | vertex_changes | Serialized ordered SHMM VertexChange instructions |
 | evidence | Source-key-indexed assignment basis, source references, category, units and QA findings |
 | application_holds | Objects excluded by writer capabilities, with reasons |
+| force_main_accounting | Every requested pressure pipe, matching existing pumps, planned membership and preparation holds |
+| pressure_nodes | Pressure roles, basis and previous/expected junction surcharge, including no-op baseline settings |
 | side_input_hashes | Finished-change/crosswalk/review fingerprints checked before completion |
 | applied_source_keys, model_ids | Explicit applied membership and source-to-target identities |
 
@@ -160,3 +162,27 @@ values, missing changes, geometry-order changes and preserved-text changes. A se
 test must establish that exact no-op and repeated-section inputs are reported
 faithfully. No approval prompt is introduced merely because a candidate has ordinary
 engineering warnings.
+
+### Pressure-pipe handoff
+
+Force-main preparation provides `shape=FORCE_MAIN`, a separate `pressure_assignment`
+(value, equation, canonical unit, basis), and a positive CONDUITS Manning field.
+H-W C remains dimensionless. D-W absolute roughness stays in metres until the
+adapter converts Geom2 to inches for US flow units or millimetres for SI flow units,
+as specified in [EPA SWMM 5.2 Table D-2](https://www.epa.gov/system/files/documents/2022-04/swmm-users-manual-version-5.2.pdf).
+SWMM manages its force-main friction calculation; the CONDUITS field is not reused
+as C or absolute roughness. Baseline options must agree and use Dynamic Wave.
+
+Sealed source connections receive the configured surcharge only when an accepted
+force main uses the node. An enabled internal-connection policy also examines
+existing modeled force mains: incoming pressure/pump plus outgoing force main,
+without gravity/regulator connections. Storage, receiving manholes and unresolved
+terminals retain their settings. Explicit source roles take precedence over baseline
+inference. Exact or reversed force-main endpoint pairs matching existing pumps are
+held to prevent a passive bypass. This is an association warning, not proof that
+the detailed pressure network has been modeled.
+
+`force_main_accounting.csv` and `pressure_connections.csv` expose this review.
+Independent readback verifies force-main shape, coefficient and serialization units,
+CONDUITS coefficient, and every specified or preserved pressure-node surcharge.
+Missing pipe elevations, rims, roles or coefficients remain holds.

@@ -29,13 +29,13 @@ See the [README](../README.md) for runnable examples and exact artifacts.
 Native GeoJSON/GeoPackage/File Geodatabase adapters remain unavailable;
 externally exported inspected packets are the GIS bridge. pyproj validates
 projected CRS/axes/units; global reprojection is unsupported. The writer compiles
-supported circular gravity-pipe/junction operations against an existing compatible
-SWMM baseline. A gravity conduit can use an existing STORAGE endpoint with its
+supported circular gravity/force-main and junction operations against an existing compatible
+SWMM baseline. A parameterized conduit can use an existing STORAGE endpoint with its
 baseline floor and maximum-depth-derived model top preserved; no storage, curve,
 coordinate, initial-depth or control edits are generated. This does not establish
 that a modeled storage top is a surveyed ground rim. New storage creation and
-outfall-endpoint parameter contracts remain unsupported. Pressure parameters,
-noncircular additions, spatial asset matching,
+outfall-endpoint parameter contracts remain unsupported.
+Noncircular additions, spatial asset matching,
 aggregation, existing-floor dependency edits, renames/deletes/rewires,
 existing-vertex replacement and new model creation remain unsupported.
 
@@ -520,7 +520,7 @@ Do not test only whether a generated model can be read.
 
 The 0.1.0 runtime implements the supported subset of phases 1 through 5, with
 synthetic schema-equivalence and model readback tests. It does not claim all broad
-acceptance requirements are complete. Native-driver/spatial and pressure extensions,
+acceptance requirements are complete. Native-driver/spatial extensions,
 dependent existing-floor changes, generic estimators, interactive review products
 and additional utility/engine cases remain open. Actual run reports establish
 which assignments and operations were applied.
@@ -536,7 +536,7 @@ which assignments and operations were applied.
    candidates, verify preservation, and replay the private pilot outside the repository.
 5. **Review loop:** reusable reports, profiles, scoped decision edits, post-build network
    QA and configured engine checks; test a third utility schema.
-6. **Extensions:** aggregated reaches, load transfers, pressure networks, additional SWMM
+6. **Extensions:** aggregated reaches, load transfers, detailed station reconstruction, additional SWMM
    cards and other model targets as explicitly reviewed capabilities.
 
 The first useful release is complete when A01 through A15 pass and the private pilot
@@ -571,3 +571,17 @@ preparation prunes donors to convergence. Disabling pipe_numeric in evidence
 precedence excludes the GIS fields completely from attribution/conflict/fallback.
 Existing floor proposals are reported separately from preserved baseline floors.
 See [floor policy](floors.md).
+
+### Implemented force-main extension (2026-10-15)
+
+The supported circular-network path includes explicit H-W/D-W pressure contracts,
+FORCE_MAIN serialization, reviewed pressure roles and configured sealed-connection
+surcharge. Coefficients retain their formula and units; D-W uses inches/mm on disk.
+Accepted source-pipe membership governs source-node surcharge effects. An opt-in
+internal baseline rule may set existing force-main junction surcharge independently
+of new source additions. Open receivers, storage wet wells and unrelated junctions
+are preserved. Source force mains coincident with modeled pump endpoint pairs
+remain station-association holds. Missing geometry, pipe ends, rims or role evidence
+remain visible holds. Both QA diffs, pressure accounting registers and independent
+readback are required. Detailed station reconstruction, pump curve changes, new
+storage and automatic profile estimation remain outside this extension.

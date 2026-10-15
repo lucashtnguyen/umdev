@@ -281,7 +281,7 @@ def _validate_policies(data: dict[str, Any]) -> None:
                 raise ConfigurationError("Datum offset requires finite signed value and length unit")
     for entity in ("nodes", "pipes"):
         if entity in data.get("parameters", {}):
-            allowed = {"floor_methods", "rim_methods", "missing_floor_or_rim", "estimators", "update_existing_rims"} if entity == "nodes" else {"length_methods", "diameter_methods", "shape", "missing_required_value"}
+            allowed = {"floor_methods", "rim_methods", "missing_floor_or_rim", "estimators", "update_existing_rims", "pressure_connections"} if entity == "nodes" else {"length_methods", "diameter_methods", "shape", "missing_required_value"}
             _keys(data["parameters"][entity], allowed, f"parameters.{entity}")
             if data["parameters"][entity].get("estimators"):
                 raise ConfigurationError("Named estimators are not implemented")
@@ -301,6 +301,19 @@ def _validate_policies(data: dict[str, Any]) -> None:
         raise ConfigurationError("Unsupported node-floor method")
     if set(node_policy.get("rim_methods", [])) - {"reviewed_override", "structure_rim"}:
         raise ConfigurationError("Unsupported node-rim method")
+    if "pressure_connections" in node_policy:
+        pressure_nodes = _keys(node_policy["pressure_connections"],
+            {"classification", "surcharge_depth", "basis", "node_overrides", "model_node_overrides"}, "parameters.nodes.pressure_connections")
+        if pressure_nodes.get("classification", "explicit_roles") not in {"explicit_roles", "internal_force_main_only"}:
+            raise ConfigurationError("Unsupported pressure connection classification")
+        _quantity(pressure_nodes.get("surcharge_depth"), "pressure connection surcharge_depth")
+        if not isinstance(pressure_nodes.get("basis"), str) or not pressure_nodes["basis"].strip():
+            raise ConfigurationError("Pressure connection policy requires an explicit basis")
+        for namespace in ("node_overrides", "model_node_overrides"):
+            overrides = pressure_nodes.get(namespace, {})
+            if (not isinstance(overrides, dict) or any(not isinstance(key, str) or not key.strip() or
+                    role not in {"sealed", "open_discharge", "wet_well"} for key, role in overrides.items())):
+                raise ConfigurationError(f"Pressure {namespace} require node IDs and sealed/open_discharge/wet_well roles")
     pipe_policy = data.get("parameters", {}).get("pipes", {})
     if set(pipe_policy.get("length_methods", [])) - {"reviewed_override", "attribute_length", "geometry_length"}:
         raise ConfigurationError("Unsupported pipe-length method")
@@ -332,7 +345,21 @@ def _validate_policies(data: dict[str, Any]) -> None:
             if not unknown.get("basis"):
                 raise ConfigurationError("Assumed roughness requires a basis")
     if "pressure_parameters" in rough:
-        _keys(rough["pressure_parameters"], {"policy"}, "roughness.pressure_parameters")
+        pressure = _keys(rough["pressure_parameters"],
+            {"policy", "equation", "coefficient", "conduit_manning_n", "basis"}, "roughness.pressure_parameters")
+        if pressure.get("policy") not in {"hold", "require_separate_contract", "explicit_assumption"}:
+            raise ConfigurationError("Unsupported pressure parameter policy")
+        if pressure.get("policy") == "explicit_assumption":
+            if pressure.get("equation") == "H-W":
+                _finite(pressure.get("coefficient"), "H-W coefficient", positive=True)
+            elif pressure.get("equation") == "D-W":
+                _quantity(pressure.get("coefficient"), "D-W absolute roughness")
+                _finite(pressure["coefficient"]["value"], "D-W absolute roughness", positive=True)
+            else:
+                raise ConfigurationError("Pressure equation must be H-W or D-W")
+            _finite(pressure.get("conduit_manning_n"), "Pressure partial-flow Manning n", positive=True)
+            if not isinstance(pressure.get("basis"), str) or not pressure["basis"].strip():
+                raise ConfigurationError("Pressure parameters require an explicit basis")
     for name, scenario in data.get("scenarios", {}).items():
         _keys(scenario, {"include_statuses", "exclude_statuses", "unknown_status"}, f"scenarios.{name}")
         if set(scenario.get("include_statuses", [])) & set(scenario.get("exclude_statuses", [])):

@@ -19,6 +19,7 @@ from typing import Any, Mapping, Sequence
 from hymo import SWMMDocument, interpret_fields, read_document
 from shmm import Change, VertexChange
 
+from .pressure import baseline_pressure_plan, pressure_contract_reason
 from .reporting import stable_hash
 from .units import from_metres, to_metres
 
@@ -325,8 +326,10 @@ def compile_handoff(document: SWMMDocument, prepared: Mapping[str, Any],
     Notes
     -----
     Existing junction floors and entire existing storage profiles are preserved.
-    Gravity links may reference an existing storage without writing its card or
-    curve. New storage, pressure links and outfall endpoints remain unsupported.
+    Gravity and explicitly parameterized force-main links may reference existing
+    storage without writing its card or curve. New storage and outfall endpoints
+    remain unsupported. Pressure connections require explicit roles or an enabled
+    internal-connection policy; open discharge and wet-well cards are preserved.
     Changing a floor and all its dependencies is intentionally held by this
     adapter. Existing hydraulic pipe updates require exact directed endpoint
     identity and circular shape; geometry replacement
@@ -358,6 +361,10 @@ def compile_handoff(document: SWMMDocument, prepared: Mapping[str, Any],
         return resolve_model_identity(row, "nodes", config, crosswalk)[0]
     holds = []
     accepted = []
+    pump_ends = {}
+    for pump in document.records("PUMPS"):
+        pump_ends.setdefault(tuple(map(_key, pump.tokens[1:3])), []).append(pump.tokens[0])
+        pump_ends.setdefault(tuple(map(_key, reversed(pump.tokens[1:3]))), []).append(pump.tokens[0])
     seen_targets = set()
     for pipe in source_pipes:
         name = resolve_model_identity(pipe, "pipes", config, crosswalk)[0]
@@ -367,8 +374,14 @@ def compile_handoff(document: SWMMDocument, prepared: Mapping[str, Any],
         if _key(name) in seen_targets:
             raise ValueError("Two prepared source pipes target the same model identity")
         seen_targets.add(_key(name))
-        if any(_key(node) in storages for node in ends) and pipe.get("pipe_kind") != "gravity":
-            reason = "unsupported_pressure_or_parameter_contract"
+        if pipe.get("pipe_kind") == "force_main":
+            reason = pressure_contract_reason(pipe, document)
+            if tuple(map(_key, ends)) in pump_ends:
+                reason = "force_main_matches_existing_pump_abstraction"
+            if reason is None and any(row.get("pressure_connection", {}).get("role") not in {"sealed", "open_discharge", "wet_well"} for row in (upstream, downstream)):
+                reason = "unresolved_pressure_connection_role"
+        if reason is not None:
+            pass
         elif any(_key(node) in node_namespace and _key(node) not in junctions and _key(node) not in storages for node in ends):
             reason = "existing_nonjunction_endpoint_requires_supported_parameter_contract"
         elif any(row.get("model_section") == "STORAGE" and _key(node) not in storages for row, node in zip((upstream, downstream), ends)):
@@ -379,18 +392,46 @@ def compile_handoff(document: SWMMDocument, prepared: Mapping[str, Any],
             reason = "existing_storage_endpoint_requires_baseline_coordinates"
         elif _key(name) in link_namespace and _key(name) not in links:
             reason = "existing_nonconduit_target_requires_supported_operation"
-        elif pipe.get("shape") != "CIRCULAR":
+        elif pipe.get("shape") not in {"CIRCULAR", "FORCE_MAIN"}:
             reason = "prepared_shape_requires_additional_model_adapter"
         elif _key(name) in links:
             baseline = links[_key(name)]
             if tuple(map(_key, baseline.tokens[1:3])) != tuple(map(_key, ends)):
                 reason = "directed_rewire_is_not_supported"
-            elif _key(name) not in sections or sections[_key(name)].tokens[1].upper() != "CIRCULAR":
+            elif _key(name) not in sections or sections[_key(name)].tokens[1].upper() != pipe.get("shape"):
                 reason = "existing_shape_conversion_is_not_supported"
         if reason:
             holds.append({"source_key": pipe["key"], "asset_id": pipe["asset_id"], "reason": reason})
         else:
             accepted.append((name, pipe, upstream, downstream))
+    # Source GIS and the baseline can each omit a gravity/station connection
+    # present in the other. Infer sealing only against their final combined
+    # connection context; an explicit reviewed sealed role remains authoritative.
+    nonpressure_nodes = set()
+    for record in document.records("CONDUITS"):
+        shape = sections.get(_key(record.tokens[0]))
+        if shape is None or shape.tokens[1].upper() != "FORCE_MAIN":
+            nonpressure_nodes.update(map(_key, record.tokens[1:3]))
+    for section in ("WEIRS", "ORIFICES", "OUTLETS"):
+        for record in document.records(section):
+            nonpressure_nodes.update(map(_key, record.tokens[1:3]))
+    for record in document.records("PUMPS"):
+        nonpressure_nodes.add(_key(record.tokens[1]))
+    for _, pipe, upstream, downstream in accepted:
+        if pipe.get("pipe_kind") != "force_main":
+            nonpressure_nodes.update((_key(target_node(upstream)), _key(target_node(downstream))))
+    filtered = []
+    for item in accepted:
+        name, pipe, upstream, downstream = item
+        conflict = pipe.get("pipe_kind") == "force_main" and any(
+            row.get("pressure_connection", {}).get("method") == "internal_force_main_only"
+            and _key(target_node(row)) in nonpressure_nodes for row in (upstream, downstream))
+        if conflict:
+            holds.append({"source_key": pipe["key"], "asset_id": pipe["asset_id"],
+                          "reason": "inferred_sealed_connection_has_nonpressure_model_context"})
+        else:
+            filtered.append(item)
+    accepted = filtered
     needed = {n["asset_id"] for _, _, upstream, downstream in accepted for n in (upstream, downstream)}
     seen_node_targets = {}
     for identity in sorted(needed):
@@ -398,17 +439,40 @@ def compile_handoff(document: SWMMDocument, prepared: Mapping[str, Any],
         if target_identity in seen_node_targets and seen_node_targets[target_identity] != identity:
             raise ValueError("Multiple source nodes target the same model identity")
         seen_node_targets[target_identity] = identity
-    changes, vertices, evidence = [], [], {}
+    pressure_changes, pressure_evidence, pressure_review = baseline_pressure_plan(document, config,
+        added_connections=[{"model_id": name, "pipe_kind": pipe.get("pipe_kind", "gravity"),
+            "from_node": target_node(upstream), "to_node": target_node(downstream)}
+            for name, pipe, upstream, downstream in accepted if _key(name) not in links])
+    changes, vertices, evidence = list(pressure_changes), [], dict(pressure_evidence)
+    pressure_needed = {node["asset_id"] for _, pipe, upstream, downstream in accepted if pipe.get("pipe_kind") == "force_main" for node in (upstream, downstream)}
     fields_units = {"invert_elevation": length_unit, "max_depth": length_unit, "length": length_unit,
                     "inlet_offset": length_unit, "outlet_offset": length_unit, "geom1": length_unit,
-                    "roughness": "Manning n", "x": map_unit, "y": map_unit, "vertices": map_unit}
+                    "roughness": "Manning n", "surcharge_depth": length_unit, "x": map_unit, "y": map_unit, "vertices": map_unit}
     for identity in sorted(needed):
         row = nodes[identity]
         name, source_key = target_node(row), row["key"]
         floor = from_metres(row["floor_m"], length_unit)
         depth = from_metres(row["max_depth_m"], length_unit)
+        surcharge_m = row.get("surcharge_depth_m") if identity in pressure_needed and row.get("pressure_connection", {}).get("role") == "sealed" else None
         evidence[source_key] = {"asset_id": identity, "assignments": row.get("assignments", {}),
-            "units": fields_units, "qa_flags": [f for f in prepared.get("findings", []) if f.get("object_key") == source_key]}
+            "units": fields_units, "pressure_connection": row.get("pressure_connection"), "surcharge_depth_m": surcharge_m if identity in pressure_needed else None, "qa_flags": [f for f in prepared.get("findings", []) if f.get("object_key") == source_key]}
+        if identity in pressure_needed:
+            model_roles = config.get("parameters", {}).get("nodes", {}).get("pressure_connections", {}).get("model_node_overrides", {})
+            configured_role = next((role for key, role in model_roles.items() if _key(key) == _key(name)), None)
+            if configured_role is not None and configured_role != row["pressure_connection"]["role"]:
+                raise ValueError("Source and model pressure-connection roles conflict")
+            # Accepted, explicitly prepared node roles take precedence over an
+            # automatic baseline classification. Open/wet-well roles never
+            # inherit a sealed-node change merely because force mains touch it.
+            changes = [change for change in changes if not (change.source_key.startswith("pressure/baseline/") and _key(change.object_id) == _key(name))]
+            evidence.pop("pressure/baseline/" + name, None)
+            pressure_review = [item for item in pressure_review if _key(item["model_id"]) != _key(name)]
+            existing_fields = interpret_fields("JUNCTIONS", junctions[_key(name)]) if _key(name) in junctions else None
+            original_surcharge = float(existing_fields["surcharge_depth"]) if existing_fields else 0.0 if _key(name) not in storages else None
+            expected_surcharge = from_metres(surcharge_m, length_unit) if surcharge_m is not None else original_surcharge
+            pressure_review.append({"model_id": name, **row["pressure_connection"],
+                "previous_surcharge_depth": original_surcharge, "expected_surcharge_depth": expected_surcharge,
+                "unit": length_unit, "changed": expected_surcharge != original_surcharge})
         if _key(name) in storages:
             # Existing storage is only an endpoint reference. Never turn it into
             # a junction or alter its stage/area curve, depth, losses or map point.
@@ -422,8 +486,16 @@ def compile_handoff(document: SWMMDocument, prepared: Mapping[str, Any],
             if not math.isclose(depth, float(old["max_depth"]), rel_tol=0, abs_tol=1e-9):
                 changes.append(Change("update", "JUNCTIONS", name, {"max_depth": depth}, source_key,
                                       {"max_depth": float(old["max_depth"])}))
+            if surcharge_m is not None:
+                requested = from_metres(surcharge_m, length_unit)
+                if not math.isclose(requested, float(old["surcharge_depth"]), rel_tol=0, abs_tol=1e-9):
+                    changes = [change for change in changes if not (change.section == "JUNCTIONS" and _key(change.object_id) == _key(name) and "surcharge_depth" in change.values)]
+                    changes.append(Change("update", "JUNCTIONS", name, {"surcharge_depth": requested}, source_key, {"surcharge_depth": float(old["surcharge_depth"])}))
         else:
-            changes.append(Change("add", "JUNCTIONS", name, {"invert_elevation": floor, "max_depth": depth}, source_key))
+            new_values = {"invert_elevation": floor, "max_depth": depth}
+            if surcharge_m is not None:
+                new_values["surcharge_depth"] = from_metres(surcharge_m, length_unit)
+            changes.append(Change("add", "JUNCTIONS", name, new_values, source_key))
         if _key(name) not in coords:
             point = row.get("coordinates") or []
             if len(point) < 2 or any(not math.isfinite(float(v)) for v in point[:2]):
@@ -439,20 +511,30 @@ def compile_handoff(document: SWMMDocument, prepared: Mapping[str, Any],
                   "outlet_offset": from_metres(pipe["outlet_offset_m"], length_unit)}
         diameter = from_metres(pipe["diameter_m"], length_unit)
         evidence[source_key] = {"asset_id": pipe["asset_id"], "assignments": pipe.get("assignments", {}),
-            "roughness_assignment": pipe.get("roughness_assignment"), "length_method": pipe.get("length_method"),
+            "roughness_assignment": pipe.get("roughness_assignment"), "pressure_assignment": pipe.get("pressure_assignment"), "length_method": pipe.get("length_method"),
             "diameter_method": pipe.get("diameter_method"), "units": fields_units,
             "qa_flags": [f for f in prepared.get("findings", []) if f.get("object_key") == source_key]}
+        if pipe.get("pipe_kind") == "force_main":
+            evidence[source_key]["units"] = {**fields_units, "geom2": "dimensionless H-W C" if pipe["pressure_assignment"]["equation"] == "H-W" else "in" if length_unit == "ft" else "mm"}
         if _key(name) in links:
             old = interpret_fields("CONDUITS", links[_key(name)])
             editable = {field: value for field, value in values.items() if field not in {"inlet_node", "outlet_node"}}
             changes.append(Change("update", "CONDUITS", name, editable, source_key,
                                   {field: float(old[field]) for field in editable}))
-            changes.append(Change("update", "XSECTIONS", name, {"geom1": diameter}, source_key,
-                                  {"geom1": float(sections[_key(name)].tokens[2])}))
+            xvalues = {"geom1": diameter}
+            if pipe.get("shape") == "FORCE_MAIN":
+                assignment = pipe["pressure_assignment"]
+                xvalues["geom2"] = assignment["value"] if assignment["equation"] == "H-W" else from_metres(assignment["value"], "in" if length_unit == "ft" else "mm")
+            changes.append(Change("update", "XSECTIONS", name, xvalues, source_key,
+                                  {field: float(sections[_key(name)].tokens[2 if field == "geom1" else 3]) for field in xvalues}))
         else:
             changes.append(Change("add", "CONDUITS", name, values, source_key))
+            pressure = pipe.get("pressure_assignment", {})
+            coefficient = pressure.get("value", 0)
+            if pressure.get("equation") == "D-W":
+                coefficient = from_metres(coefficient, "in" if length_unit == "ft" else "mm")
             changes.append(Change("add", "XSECTIONS", name,
-                {"shape": "CIRCULAR", "geom1": diameter, "geom2": 0, "geom3": 0, "geom4": 0}, source_key))
+                {"shape": pipe["shape"], "geom1": diameter, "geom2": coefficient, "geom3": 0, "geom4": 0}, source_key))
             points = [tuple(float(v) for v in point[:2]) for point in pipe["coordinates"]]
             source_start, source_end = upstream["coordinates"][:2], downstream["coordinates"][:2]
             tolerance = config.get("ports", {}).get("assignment", {}).get("endpoint_tolerance", {"value": 0, "unit": "m"})
@@ -504,6 +586,12 @@ def compile_handoff(document: SWMMDocument, prepared: Mapping[str, Any],
             "prepared_sha256": stable_hash(prepared), "source_manifest": source_manifest,
             "changes": [asdict(c) for c in changes], "vertex_changes": [asdict(v) for v in vertices],
             "evidence": evidence, "application_holds": holds, "side_input_hashes": side_inputs,
+            "pressure_nodes": pressure_review,
+            "force_main_accounting": [{"source_key": pipe["key"], "asset_id": pipe["asset_id"],
+                "represented_pumps": pump_ends.get(tuple(_key(target_node(nodes[pipe[field]])) for field in ("from_node", "to_node") if pipe.get(field) in nodes), []),
+                "disposition": "applied" if pipe["key"] in {p["key"] for _, p, _, _ in accepted} else "hold",
+                "preparation_reasons": pipe.get("reasons", [])}
+                for pipe in prepared.get("pipes", []) if pipe.get("pipe_kind") == "force_main"],
             "applied_source_keys": [p["key"] for _, p, _, _ in accepted],
             "model_ids": {"nodes": {identity: target_node(nodes[identity]) for identity in needed},
                           "pipes": {p["key"]: name for name, p, _, _ in accepted}}}
@@ -547,6 +635,21 @@ def verify_prepared_profiles(candidate: SWMMDocument, prepared: Mapping[str, Any
                     raise ValueError(f"Written {label} differs from prepared evidence")
             checked_nodes.add(model_id)
             node_values.append(port)
+        cross_section = xsections[_key(name)]
+        if cross_section.tokens[1].upper() != pipe["shape"]:
+            raise ValueError("Written pipe shape differs from prepared evidence")
+        if pipe.get("pipe_kind") == "force_main":
+            reason = pressure_contract_reason(pipe, candidate)
+            if reason:
+                raise ValueError("Written force-main option/parameter mismatch: " + reason)
+            coefficient = float(cross_section.tokens[3])
+            assignment = pipe["pressure_assignment"]
+            if assignment["equation"] == "D-W":
+                coefficient = to_metres(coefficient, "in" if unit == "ft" else "mm")
+            if not math.isclose(coefficient, assignment["value"], rel_tol=0, abs_tol=tolerance):
+                raise ValueError("Written force-main coefficient differs from prepared evidence")
+            if not math.isclose(float(observed.tokens[4]), pipe["roughness"], rel_tol=0, abs_tol=1e-12):
+                raise ValueError("Written conduit Manning differs from prepared evidence")
         diameter = to_metres(float(xsections[_key(name)].tokens[2]), unit)
         length = to_metres(float(observed.tokens[3]), unit)
         if not math.isclose(diameter, pipe["diameter_m"], rel_tol=0, abs_tol=tolerance) or not math.isclose(length, pipe["length_m"], rel_tol=0, abs_tol=tolerance):
@@ -556,7 +659,19 @@ def verify_prepared_profiles(candidate: SWMMDocument, prepared: Mapping[str, Any
             raise ValueError("Written pipe grade differs from prepared evidence")
         rows.append({"source_key": pipe["key"], "model_id": name, "inlet_invert_m": node_values[0],
                      "outlet_invert_m": node_values[1], "grade": grade})
-    return {"checked_nodes": len(checked_nodes), "checked_pipes": len(rows), "profiles": rows}
+    for pressure_node in handoff.get("pressure_nodes", []):
+        expected = pressure_node.get("expected_surcharge_depth")
+        if expected is None:
+            continue
+        actual = interpret_fields("JUNCTIONS", profile_nodes[_key(pressure_node["model_id"])])
+        if not math.isclose(float(actual["surcharge_depth"]), expected, rel_tol=0, abs_tol=from_metres(tolerance, unit)):
+            raise ValueError("Written surcharge depth differs from pressure-connection policy")
+    for change in handoff["changes"]:
+        if change["section"] == "JUNCTIONS" and "surcharge_depth" in change["values"]:
+            observed = interpret_fields("JUNCTIONS", profile_nodes[_key(change["object_id"])])
+            if not math.isclose(float(observed["surcharge_depth"]), change["values"]["surcharge_depth"], rel_tol=0, abs_tol=from_metres(tolerance, unit)):
+                raise ValueError("Written surcharge depth differs from pressure-connection policy")
+    return {"checked_nodes": len(checked_nodes), "checked_pipes": len(rows), "profiles": rows, "checked_surcharge_instructions": sum(change["section"] == "JUNCTIONS" and "surcharge_depth" in change["values"] for change in handoff["changes"])}
 
 
 def candidate_engineering_qa(document: SWMMDocument, config: Mapping[str, Any]) -> list[dict[str, Any]]:

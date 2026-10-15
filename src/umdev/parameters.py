@@ -16,6 +16,7 @@ from typing import Any, Mapping, Sequence
 from .evidence import apply_reviewed_overrides, collect_structure_ports, normalize_elevation, resolve_ports, tolerance_metres
 from .qa import connectivity_findings, finding, profile_findings
 from .records import Assignment, Network, PreparedNetwork, finite_number, network_from_dict
+from .units import to_metres
 
 
 def _material_key(value: Any) -> str:
@@ -23,15 +24,70 @@ def _material_key(value: Any) -> str:
     return " ".join(str(value or "").strip().upper().split())
 
 
+def resolve_pressure_parameters(policy: Mapping[str, Any]) -> dict[str, Any]:
+    """Resolve an explicit pressure equation without borrowing gravity roughness.
+
+    Parameters
+    ----------
+    policy : mapping
+        Roughness policy containing an optional explicit pressure_parameters
+        contract with equation, coefficient, conduit_manning_n and basis.
+
+    Returns
+    -------
+    dict
+        Canonical coefficient, SI unit and traceable assumption, or an unresolved
+        assignment when no pressure contract has been authorized.
+
+    Raises
+    ------
+    ValueError
+        An explicit coefficient, equation, unit, Manning n or basis is invalid.
+
+    Notes
+    -----
+    H-W coefficients are dimensionless. D-W absolute roughness is converted to
+    metres; it is independent of the separately declared partial-flow Manning n.
+    Missing contracts remain held. No empirical coefficient is supplied here.
+    """
+    pressure = policy.get("pressure_parameters", {})
+    if pressure.get("policy") != "explicit_assumption":
+        return {"value": None, "category": "unresolved", "flags": ["unsupported_pressure_or_parameter_contract"]}
+    equation = pressure.get("equation")
+    raw = pressure.get("coefficient")
+    if equation == "H-W":
+        coefficient = finite_number(raw)
+        unit = "dimensionless"
+    elif equation == "D-W" and isinstance(raw, Mapping):
+        coefficient = to_metres(raw.get("value"), raw.get("unit"))
+        unit = "m"
+    else:
+        raise ValueError("Pressure equation must be H-W or D-W with explicit coefficient units")
+    manning = finite_number(pressure.get("conduit_manning_n"))
+    if coefficient is None or coefficient <= 0 or manning is None or manning <= 0 or not pressure.get("basis"):
+        raise ValueError("Pressure contract requires positive finite coefficient, separate Manning n and basis")
+    return {"value": coefficient, "unit": unit, "equation": equation,
+            "category": "assumed", "policy_id": policy.get("policy_id"),
+            "basis": pressure["basis"], "conduit_manning_n": manning,
+            "flags": ["pressure_parameter_assumption"]}
+
+
 def resolve_roughness(material: Any, pipe_kind: str, policy: Mapping[str, Any]) -> dict[str, Any]:
     """Resolve gravity Manning n from an explicit, traceable project policy.
 
     Notes
     -----
-    There is no blanket n default. Force mains require a distinct parameter
-    contract and cannot inherit gravity Manning, Hazen-Williams or Darcy values.
-    Unknown materials may proceed only under an explicit configured assumption.
+    There is no blanket n default. Force mains use a separately declared
+    partial-flow Manning n, never their pressure coefficient. Unknown materials
+    may proceed only under an explicit configured assumption.
     """
+    if pipe_kind == "force_main":
+        pressure = resolve_pressure_parameters(policy)
+        if pressure["value"] is None:
+            return pressure
+        return {"value": pressure["conduit_manning_n"], "unit": "manning_n",
+                "category": "assumed", "policy_id": policy.get("policy_id"),
+                "basis": pressure["basis"], "flags": ["pressure_partial_flow_manning_assumption"]}
     if pipe_kind != "gravity" or policy.get("parameter") != "manning_n":
         return {"value": None, "category": "unresolved", "flags": ["unsupported_pressure_or_parameter_contract"]}
     normalized = _material_key(material)
@@ -286,6 +342,42 @@ def _pipe_measurement(pipe: Mapping[str, Any], name: str, methods: Sequence[str]
     return None, f"missing_required_{name}"
 
 
+def _pressure_connection(node: Mapping[str, Any], baseline: Mapping[str, Any] | None,
+                         incident: Sequence[tuple[Mapping[str, Any], str]], selected: set[str],
+                         policy: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Classify selected pressure endpoints without sealing terminal outlets.
+
+    Notes
+    -----
+    Only internal, exclusively force-main connections may be inferred sealed.
+    Terminal or mixed gravity connections require an explicit reviewed role.
+    Existing STORAGE profiles remain wet wells and are never sealed junctions.
+    """
+    pressure = [(pipe, end) for pipe, end in incident
+                if pipe["key"] in selected and pipe.get("pipe_kind") == "force_main"]
+    if not pressure or not policy:
+        return None
+    role = policy.get("node_overrides", {}).get(node["asset_id"])
+    method = "explicit_role" if role else "unresolved_pressure_role"
+    if baseline is not None and baseline.get("model_section") == "STORAGE":
+        if role not in {None, "wet_well"}:
+            return {"role": "unresolved", "method": "conflicting_storage_pressure_role",
+                    "basis": policy.get("basis"), "incident_force_main_keys": sorted(p["key"] for p, _ in pressure)}
+        role, method = "wet_well", "preserved_existing_storage"
+    elif role is None and policy.get("classification", "explicit_roles") == "internal_force_main_only":
+        incoming = any(end == "downstream" for _, end in pressure)
+        outgoing = any(end == "upstream" for _, end in pressure)
+        # An unselected active gravity tributary is still evidence that sealing
+        # this connection would need an explicit engineering decision.
+        exclusively_pressure = all(pipe.get("pipe_kind") == "force_main" for pipe, _ in incident)
+        if incoming and outgoing and exclusively_pressure:
+            role, method = "sealed", "internal_force_main_only"
+    if role == "wet_well" and (baseline is None or baseline.get("model_section") != "STORAGE"):
+        role, method = "unresolved", "unsupported_new_wet_well_contract"
+    return {"role": role or "unresolved", "method": method, "basis": policy.get("basis"),
+            "incident_force_main_keys": sorted(p["key"] for p, _ in pressure)}
+
+
 def prepare_network(network: Network, config: Mapping[str, Any], *,
                     baseline_nodes: Mapping[str, Mapping[str, Any]] | None = None,
                     selected_pipe_keys: Sequence[str] | None = None,
@@ -412,6 +504,23 @@ def prepare_network(network: Network, config: Mapping[str, Any], *,
             if model_section == "STORAGE" or not node_policy.get("update_existing_rims", False):
                 rim = Assignment(baseline_rim, "observed", "preserved_baseline_rim", evidence=(reference,))
         reasons = []
+        pressure_connection = _pressure_connection(node, baseline, incidents[identity], selected,
+                                                  node_policy.get("pressure_connections", {}))
+        surcharge_depth = None
+        if pressure_connection is not None:
+            # Pressure classification is independent of physical floor/rim QA.
+            # An unresolved or rejected force main must not remove valid gravity
+            # conduits sharing an otherwise complete manhole profile.
+            pressure_connection["reasons"] = []
+            if pressure_connection["role"] == "unresolved":
+                pressure_connection["reasons"].append("unresolved_pressure_connection_role")
+            elif pressure_connection["role"] == "sealed":
+                declared = node_policy["pressure_connections"].get("surcharge_depth", {})
+                surcharge_depth = to_metres(declared.get("value"), declared.get("unit"))
+                if surcharge_depth < 0 or not pressure_connection.get("basis"):
+                    raise ValueError("Sealed pressure connections require nonnegative surcharge depth and basis")
+                if allowed_categories is not None and "assumed" not in allowed_categories:
+                    pressure_connection["reasons"].append("surcharge_depth:assignment_category_not_allowed")
         coordinates = node.get("coordinates")
         if baseline is None and (not isinstance(coordinates, Sequence) or len(coordinates) < 2 or
                                  any(finite_number(value) is None for value in coordinates[:2])):
@@ -431,6 +540,16 @@ def prepare_network(network: Network, config: Mapping[str, Any], *,
                "model_section": baseline.get("model_section", "JUNCTIONS") if baseline is not None else "JUNCTIONS",
                "disposition": "hold" if reasons else "include",
                "reasons": reasons, "assignments": {"floor": floor.to_dict(), "rim": rim.to_dict()}}
+        if pressure_connection is not None:
+            row["pressure_connection"] = pressure_connection
+            row["surcharge_depth_m"] = surcharge_depth
+            if surcharge_depth is not None:
+                assignment = Assignment(surcharge_depth, "assumed", "pressure_connection_policy",
+                                        evidence=(deepcopy(pressure_connection),),
+                                        flags=("sealed_pressure_connection_assumption",))
+                row["assignments"]["surcharge_depth"] = assignment.to_dict()
+                decisions.append({"object_key": node["key"], "asset_id": identity,
+                                  "field": "surcharge_depth", **assignment.to_dict()})
         prepared_nodes.append(row)
         for field, assignment in (("floor", floor), ("rim", rim)):
             decisions.append({"object_key": node["key"], "asset_id": identity, "field": field, **assignment.to_dict()})
@@ -455,10 +574,16 @@ def prepare_network(network: Network, config: Mapping[str, Any], *,
             reasons.extend(roughness["flags"])
         elif allowed_categories is not None and roughness["category"] not in allowed_categories:
             reasons.append("roughness:assignment_category_not_allowed")
-        shape = pipe.get("shape") or pipe_policy.get("shape")
+        if pipe.get("pipe_kind") == "force_main" and pipe.get("shape") not in {None, "CIRCULAR", "FORCE_MAIN"}:
+            reasons.append("unsupported_pipe_shape")
+        pressure_assignment = (resolve_pressure_parameters(config.get("roughness", {}))
+                               if pipe.get("pipe_kind") == "force_main" else None)
+        shape = ("FORCE_MAIN" if pressure_assignment is not None and pressure_assignment["value"] is not None
+                 else pipe.get("shape") or pipe_policy.get("shape"))
         if shape is None:
             reasons.append("missing_required_shape")
-        elif shape != "CIRCULAR":
+        elif shape != "CIRCULAR" and not (shape == "FORCE_MAIN" and pressure_assignment is not None
+                                          and pressure_assignment["value"] is not None):
             reasons.append("unsupported_pipe_shape")
         assignments = {}
         values: dict[str, Any] = {}
@@ -473,6 +598,12 @@ def prepare_network(network: Network, config: Mapping[str, Any], *,
                 reasons.append(f"{end}:unresolved_port_invert")
             elif allowed_categories is not None and assignment.category not in allowed_categories:
                 reasons.append(f"{end}:assignment_category_not_allowed")
+            if pipe.get("pipe_kind") == "force_main":
+                connection = node.get("pressure_connection")
+                if connection is None:
+                    reasons.append(f"{end}:unresolved_pressure_connection_role")
+                else:
+                    reasons.extend(f"{end}:{reason}" for reason in connection.get("reasons", []))
             if node["disposition"] == "hold":
                 reasons.append(f"{end}:incomplete_node_profile")
             floor = node.get("floor_m")
@@ -491,6 +622,10 @@ def prepare_network(network: Network, config: Mapping[str, Any], *,
                "shape": shape, "grade": grade,
                "assignments": assignments, "disposition": "hold" if reasons else "include",
                "reasons": sorted(set(reasons))}
+        if pressure_assignment is not None:
+            row["pressure_assignment"] = pressure_assignment
+            decisions.append({"object_key": key, "asset_id": pipe["asset_id"],
+                              "field": "pressure_coefficient", **pressure_assignment})
         prepared_pipes.append(row)
         decisions.append({"object_key": key, "asset_id": pipe["asset_id"], "field": "roughness", **roughness})
         findings.extend(finding(flag, key, config, field="roughness") for flag in roughness["flags"])
