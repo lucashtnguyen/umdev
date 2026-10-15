@@ -22,6 +22,7 @@ from hymo import read_document
 from .configuration import load_config
 from .models import bind_model_identities, resolve_model_identity, validate_crosswalk, baseline_node_parameters, baseline_pipe_end_parameters, candidate_engineering_qa, placeholder_node_register, compile_handoff, instructions_from_handoff, verify_prepared_profiles
 from .parameters import DEFAULT_FLOOR_METHODS, prepare_network_from_dict
+from .exclusions import apply_scope_exclusions
 from .reporting import json_value, stable_hash, write_csv, write_json, write_review_html
 from .qa import connectivity_findings
 from .sources import ingest_sources, matches_predicates
@@ -293,6 +294,11 @@ def prepare_project(config_path: str | Path) -> dict[str, Any]:
         config["review"]["overrides"] = ledger if isinstance(ledger, list) else ledger["overrides"]
         side_hashes[str(overrides_path)] = sha256(raw).hexdigest()
     selected, membership = select_pipe_keys(canonical, config, baseline)
+    # Explicit scope decisions precede model-identity requirements: a rejected
+    # source branch need not acquire a manufactured target identity to be omitted.
+    scope_selection = apply_scope_exclusions(canonical, config, baseline, selected, membership,
+                                             crosswalk_snapshot=crosswalk_snapshot or {})
+    selected, membership = scope_selection["selected"], scope_selection["membership"]
     bind_model_identities(canonical, config, crosswalk_snapshot or {}, selected)
     decision_instructions = None
     ledger_path = config.get("review", {}).get("ledger_path")
@@ -374,6 +380,8 @@ def prepare_project(config_path: str | Path) -> dict[str, Any]:
     else:
         raise RuntimeError("Applied pipe-end floor resolution failed to converge monotonically")
     handoff["side_input_hashes"].update(side_hashes)
+    handoff["selection_exclusions"] = scope_selection["exclusions"]
+    handoff["single_pipe_branches"] = scope_selection["branch_candidates"]
     dispositions = {row["key"]: row for row in prepared["pipes"]}
     writer_holds = {row["source_key"]: row["reason"] for row in handoff["application_holds"]}
     applied = set(handoff["applied_source_keys"])
@@ -388,6 +396,8 @@ def prepare_project(config_path: str | Path) -> dict[str, Any]:
                "baseline_path": baseline_path, "baseline": baseline, "baseline_sha256": baseline_hash,
                "canonical": canonical, "crosswalk_snapshot": crosswalk_snapshot,
                "selected_pipe_keys": selected, "membership": membership, "prepared": prepared,
+               "selection_exclusions": scope_selection["exclusions"],
+               "single_pipe_branches": scope_selection["branch_candidates"],
                "handoff": handoff, "applied_source_keys": sorted(applied),
                "requested_holds": [row for row in membership if row["disposition"] == "hold"],
                "floor_donor_audit": floor_donor_audit,
@@ -463,6 +473,8 @@ def run_project(config_path: str | Path, *, output_directory: str | Path | None 
     write_json(output / "canonical.json", canonical)
     write_json(output / "prepared.json", prepared)
     write_json(output / "handoff.json", handoff)
+    write_csv(output / "scope_exclusions.csv", project["selection_exclusions"])
+    write_csv(output / "single_pipe_branches.csv", project["single_pipe_branches"])
     write_csv(output / "force_main_accounting.csv", handoff.get("force_main_accounting", []))
     write_csv(output / "pressure_connections.csv", handoff.get("pressure_nodes", []))
     write_csv(output / "placeholder_nodes.csv", placeholder_nodes)
@@ -542,6 +554,7 @@ def run_project(config_path: str | Path, *, output_directory: str | Path | None 
         "review": str(output / "review.html"), "scenario": config["selection"]["scenario"],
         "config_sha256": resolved.sha256, "baseline_sha256": baseline_hash,
         "candidate_sha256": sha256(candidate.data).hexdigest(), "requested_source_pipes": len(selected),
+        "excluded_source_pipes": sum(row["disposition"] == "excluded" for row in membership),
         "applied_source_pipes": len(applied), "held_source_pipes": sum(row["disposition"] == "hold" and row["source_key"] in dispositions for row in membership),
         "scope_or_status_holds": sum(row["disposition"] == "hold" and row["source_key"] not in dispositions for row in membership),
         "new_junctions": sum(c.action == "add" and c.section == "JUNCTIONS" for c in changes),

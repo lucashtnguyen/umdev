@@ -126,3 +126,15 @@ supersession, conflicts, malformed/duplicate JSON, source and file changes,
 both endpoint fingerprints, scope, dimensions/elevations, baseline units and
 preconditions, policy selection, read-only preparation, report retention and
 legacy compatibility. No private decisions are needed in tests.
+
+### Reviewed scope policies
+
+Explicit pipe exclusions and optional single-pipe branch rules live in private
+selection configuration. Record their authorization in a `review_record` with the
+policy file's SHA-256 evidence and use its ID in the selection policy. The existing
+ledger record validates provenance; selection executes the declared policy. No new
+model-update or synthetic parameter override is used to represent exclusion.
+Individual exceptions can fingerprint the source pipe through `source_sha256`.
+Runtime scope registers retain every applied/deferred exclusion, reason, decision
+ID and topology evidence. Excluded source overrides become outside-selected-scope
+decisions; they remain recorded and cannot silently alter the retained model.

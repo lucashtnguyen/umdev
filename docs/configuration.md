@@ -395,3 +395,49 @@ Known pipe crowns above a placeholder rim remain visible as
 the hold rule for contradictory measured rims; projects can explicitly configure
 the placeholder rule as a hold. The actual written-model check uses the applied
 placeholder identities to retain this distinction.
+
+### Explicit exclusions and single-pipe branch rule
+
+`selection.pipe_exclusions` is a list of objects with required `source_key` and
+`reason`. Optional `source_sha256` must match the current canonical source-record
+fingerprint, and optional `decision_id` carries the private ledger review reference.
+Absent or duplicate source keys, empty reasons and stale declared hashes fail
+preparation. An exclusion outside current scope remains a deferred audit record.
+Explicit exclusions need no model identity or usable hydraulic profile.
+
+`selection.single_pipe_branches` supports these keys:
+
+| Key | Meaning |
+| --- | --- |
+| mode | `review` (default) or `exclude` |
+| reason | Required nonempty scope rationale when mode is exclude |
+| decision_id | Optional private policy/ledger review reference |
+| preserve_pipe_keys | Exact source-qualified keys retained despite the automatic rule |
+
+A candidate is a known-active gravity link whose leaf endpoint has exactly one
+incident pipe in the complete current source context, whose leaf has no existing
+model node, and whose other endpoint is an existing baseline JUNCTION. All active
+source pipes participate, regardless of region or diameter selection. Unknown
+lifecycle records block false leaf inference. Known inactive statuses follow the
+scenario policy. Source-to-model identities follow configured precedence and the
+frozen crosswalk; unresolved identities are not guessed into eligibility. Any
+existing baseline link ID or endpoint pair, including pumps/regulators, prevents
+automatic exclusion. Existing storage/outfall anchors and non-gravity pipes do
+not qualify. Removing one branch never changes eligibility of another in that run.
+
+This rule is a model-scope assumption, not an assertion that the branch has no
+flow. It neither deletes baseline assets nor transfers tributary loading. A source
+update explicitly excluded for an existing asset leaves the baseline asset intact.
+Excluded pipes remain in raw attribution context, but cannot provide applied-pipe
+floor donors, junction additions or SHMM instructions. Complete-request mode checks
+the remaining request; deliberate exclusions are distinct from unresolved holds.
+
+Inspect `scope_exclusions.csv`, `single_pipe_branches.csv`, `membership.csv` and
+`handoff.json`. Audit records retain reasons, prior dispositions, source fingerprints,
+leaf/anchor evidence, keep exceptions and decision IDs. Authorize project rules in
+the private consolidated decision ledger as review records referencing the hashed
+policy configuration; public repositories contain only generic logic/tests.
+
+Scope exclusions govern source preparation. Separately approved finished ledger
+operations retain their independent scope; changing those approvals requires a
+reviewed ledger decision rather than an inferred deletion or scope override.

@@ -210,3 +210,24 @@ Known pipe crowns above a placeholder rim remain visible as
 the hold rule for contradictory measured rims; projects can explicitly configure
 the placeholder rule as a hold. The actual written-model check uses the applied
 placeholder identities to retain this distinction.
+
+### Scope exclusions before model preparation
+
+Scope selection can explicitly exclude source pipes or apply the enabled single-pipe
+branch rule. Exclusions happen before identity binding, selected ledger overrides
+and the applied-end donor loop. They do not reduce full source attribution context.
+The handoff includes `selection_exclusions` and `single_pipe_branches`; the run
+writes both dedicated CSV registers and membership dispositions. Excluded pipes
+produce no hydraulic/geometry instructions or orphan node additions. A source
+exclusion never implies deletion of its existing baseline counterpart.
+
+SHMM preview and written diffs continue to compare actual instructions with the
+immutable baseline. Scope exclusions are explained in the upstream registers, not
+invented as model deletions. On regeneration from the original baseline, newly added
+assets in an earlier candidate may disappear when now excluded; the private previous-
+run comparison must expose that scope change separately from integrity verification.
+Completion counts the effective remaining request and exclusions separately.
+
+Scope exclusions govern source preparation. Separately approved finished ledger
+operations retain their independent scope; changing those approvals requires a
+reviewed ledger decision rather than an inferred deletion or scope override.

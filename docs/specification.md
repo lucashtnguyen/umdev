@@ -599,3 +599,15 @@ Assumed categories, all remaining holds, explicit basis and source provenance
 remain enforceable. Every run publishes the applied/held placeholder register;
 candidate QA, both diffs and independent literal/profile readback identify actual
 placeholder nodes. Applied placeholders always require engineering review.
+
+### Implemented scope exclusion extension (2026-10-15)
+
+The selection contract supports explicit source-pipe exclusions and a configured
+one-pass single-pipe gravity branch rule, including keep exceptions and reviewed
+policy references. Qualification uses complete active source connectivity and
+protected baseline identity/link representation; it does not infer spatial joins
+or recursively prune a network. Excluded assets retain their raw context and
+separate QA dispositions but supply no model instructions or applied-end donors.
+Existing baseline assets and loads are preserved. Scope and held-data counts,
+audit registers, frozen policy hashes and previous-candidate differences remain
+separate from SHMM preview/written integrity checks.

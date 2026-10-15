@@ -184,7 +184,7 @@ def _validate_policies(data: dict[str, Any]) -> None:
         "elevations": set("target_datum transforms allow_provisional unknown_or_mixed_datum extensions".split()),
         "parameters": {"nodes", "pipes", "extensions"},
         "roughness": set("policy_id status parameter rules unknown_material pressure_parameters extensions".split()),
-        "selection": set("scenario scope attribution_context asset_filters explicit_pipe_keys extensions".split()),
+        "selection": set("scenario scope attribution_context asset_filters explicit_pipe_keys pipe_exclusions single_pipe_branches extensions".split()),
         "qa": set("profile allow_categories rules readback_absolute_tolerance engine extensions".split()),
         "review": {"ledger_path", "overrides_path", "overrides", "changed_evidence", "extensions"},
         "publication": set("mode output_directory overwrite_sources formats retain_effective_config extensions".split()),
@@ -394,6 +394,36 @@ def _validate_policies(data: dict[str, Any]) -> None:
     selection = data.get("selection", {})
     if "explicit_pipe_keys" in selection and (not isinstance(selection["explicit_pipe_keys"], list) or not all(isinstance(key, str) for key in selection["explicit_pipe_keys"])):
         raise ConfigurationError("Explicit pipe keys must be a list of source-qualified strings")
+    exclusions = selection.get("pipe_exclusions", [])
+    if not isinstance(exclusions, list):
+        raise ConfigurationError("selection.pipe_exclusions must be a list")
+    seen_exclusions: set[str] = set()
+    for exclusion in exclusions:
+        exclusion = _keys(exclusion, {"source_key", "reason", "source_sha256", "decision_id"}, "selection.pipe_exclusions")
+        key = exclusion.get("source_key")
+        if not isinstance(key, str) or not key.strip() or key in seen_exclusions:
+            raise ConfigurationError("Pipe exclusions require unique nonempty source keys")
+        seen_exclusions.add(key)
+        if not isinstance(exclusion.get("reason"), str) or not exclusion["reason"].strip():
+            raise ConfigurationError("Pipe exclusions require a nonempty reason")
+        fingerprint = exclusion.get("source_sha256")
+        if "source_sha256" in exclusion and (not isinstance(fingerprint, str) or len(fingerprint) != 64 or any(c not in "0123456789abcdef" for c in fingerprint)):
+            raise ConfigurationError("Pipe exclusion source_sha256 must be lowercase SHA-256")
+        if "decision_id" in exclusion and (not isinstance(exclusion["decision_id"], str) or not exclusion["decision_id"].strip()):
+            raise ConfigurationError("Pipe exclusion decision_id must be a nonempty string")
+    if "single_pipe_branches" in selection:
+        branch = _keys(selection["single_pipe_branches"], {"mode", "reason", "preserve_pipe_keys", "decision_id"}, "selection.single_pipe_branches")
+        if branch.get("mode", "review") not in {"review", "exclude"}:
+            raise ConfigurationError("Single-pipe branch mode must be review or exclude")
+        if branch.get("mode", "review") == "exclude" and (not isinstance(branch.get("reason"), str) or not branch["reason"].strip()):
+            raise ConfigurationError("Single-pipe branch exclusions require a nonempty reason")
+        if "reason" in branch and (not isinstance(branch["reason"], str) or not branch["reason"].strip()):
+            raise ConfigurationError("Single-pipe branch reason must be a nonempty string")
+        if "decision_id" in branch and (not isinstance(branch["decision_id"], str) or not branch["decision_id"].strip()):
+            raise ConfigurationError("Single-pipe branch decision_id must be a nonempty string")
+        preserved = branch.get("preserve_pipe_keys", [])
+        if not isinstance(preserved, list) or not all(isinstance(key, str) and key.strip() for key in preserved) or len(set(preserved)) != len(preserved):
+            raise ConfigurationError("Preserved branch keys must be unique nonempty source keys")
     if "scenario" in selection and selection["scenario"] not in data.get("scenarios", {}):
         raise ConfigurationError("Selection refers to an unknown scenario")
     _predicates(selection.get("asset_filters", []), "selection.asset_filters")

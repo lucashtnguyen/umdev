@@ -128,6 +128,30 @@ endpoints remain findings instead of guessed asset-ID matches. Pump/regulator
 operating conditions and hydraulic acceptance require separate engineering review.
 See [topology and island review](docs/topology.md) for the contract and checklist.
 
+### Scope exclusions and single-pipe branches
+
+Individual pipes may be omitted through `selection.pipe_exclusions`, with a source
+key, reason, optional exact source fingerprint and optional ledger decision ID.
+`selection.single_pipe_branches.mode=review` reports candidates;
+`mode=exclude` applies the rule with a required reason. Without an exclusion
+policy the model plan is unchanged. `preserve_pipe_keys` keeps named branches;
+explicit per-pipe exclusions take precedence over those rule exceptions.
+
+A qualifying branch is a known-active gravity pipe connecting a new degree-one
+source endpoint to an existing baseline JUNCTION. The complete active source
+network establishes degree, including unselected pipes and unknown-status records.
+Existing model assets/pump paths are protected. The graph is frozen once, so this
+rule does not recursively strip a multi-pipe reach into shorter branches.
+
+Exclusions precede identity binding, ledger parameter selection and floor donation.
+They omit new assets or source updates and never delete baseline assets, move
+loads, or erase source context. They are reported as **excluded**, separately from
+unresolved data **holds**. Runs publish `scope_exclusions.csv` and
+`single_pipe_branches.csv`; membership and the frozen handoff retain scope evidence.
+`requested_source_pipes` counts the effective request after exclusions;
+`excluded_source_pipes` separately counts exclusions applied to that selection.
+Review scope decisions and loading implications alongside the two SHMM diffs.
+
 ### Missing manhole rims
 
 `parameters.nodes.missing_rim.mode` selects **hold** (default), **error**, or
@@ -242,3 +266,7 @@ Known pipe crowns above a placeholder rim remain visible as
 the hold rule for contradictory measured rims; projects can explicitly configure
 the placeholder rule as a hold. The actual written-model check uses the applied
 placeholder identities to retain this distinction.
+
+Scope exclusions govern source preparation. Separately approved finished ledger
+operations retain their independent scope; changing those approvals requires a
+reviewed ledger decision rather than an inferred deletion or scope override.

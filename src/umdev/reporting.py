@@ -1,8 +1,9 @@
 """Write separate deterministic preparation and engineering QA artifacts.
 
 Author: Lucas HT Nguyen
+Last modified by: Lucas HT Nguyen
 Contact: https://github.com/lucashtnguyen
-Date: 2026-10-14
+Date: 2026-10-15
 Manually maintained; reports contain project evidence only in caller-selected output.
 """
 
@@ -66,7 +67,7 @@ def write_review_html(path: Path, prepared: Mapping[str, Any], membership: Seque
                       candidate_findings: Sequence[Mapping[str, Any]] = ()) -> None:
     """Create a portable engineering review with links to both SHMM diffs."""
     sections = []
-    for title, records in (("Membership and holds", membership),
+    for title, records in (("Membership, scope exclusions and holds", membership),
                            ("Prepared junctions", prepared.get("nodes", [])),
                            ("Prepared pipes", prepared.get("pipes", [])),
                            ("Preparation findings", prepared.get("findings", [])),
@@ -90,6 +91,7 @@ Simulation and calibration are not established by this report.</p>
 <nav><a href="preview_diff.html">SHMM preview diff</a><a href="written_model_diff.html">SHMM written-model diff</a>
 <a href="topology_components.csv">Network components</a><a href="topology_connector_candidates.csv">Held/excluded connector candidates</a>
 <a href="candidate_qa.csv">Written-model QA CSV</a><a href="profile_verification.json">Profile readback</a>
+<a href="scope_exclusions.csv">Scope exclusions</a><a href="single_pipe_branches.csv">Single-pipe branch review</a>
 <a href="prepared.json">Prepared values and evidence</a><a href="membership.csv">Membership CSV</a></nav>
 <p><label>Filter rows <input id="filter" type="search"></label></p>""" + "".join(sections) + """
 <script>document.getElementById('filter').addEventListener('input',function(){
