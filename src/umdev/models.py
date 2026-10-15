@@ -2,7 +2,7 @@
 
 Author: Lucas HT Nguyen
 Contact: https://github.com/lucashtnguyen
-Date: 2026-10-14
+Date: 2026-10-15
 Manually maintained. SHMM exclusively writes model files; no raw GIS inference.
 """
 
@@ -201,7 +201,8 @@ def _extra_instructions(config: Mapping[str, Any]) -> tuple[list[Change], dict[s
 def compile_handoff(document: SWMMDocument, prepared: Mapping[str, Any],
                     config: Mapping[str, Any], *, config_sha256: str,
                     source_manifest: Any = None,
-                    crosswalk_snapshot: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                    crosswalk_snapshot: Mapping[str, Any] | None = None,
+                    decision_instructions: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Compile supported complete objects and explicit existing-model instructions.
 
     Parameters
@@ -216,6 +217,11 @@ def compile_handoff(document: SWMMDocument, prepared: Mapping[str, Any],
         Effective preparation configuration hash.
     source_manifest : object, optional
         Read-only input identities and hashes.
+    crosswalk_snapshot : mapping, optional
+        Frozen target-identity crosswalk already read by orchestration.
+    decision_instructions : mapping, optional
+        Frozen consolidated-ledger changes, evidence and side-input hashes.
+        Cannot be combined with the legacy model.changes_path input.
 
     Returns
     -------
@@ -374,7 +380,25 @@ def compile_handoff(document: SWMMDocument, prepared: Mapping[str, Any],
             vertices.append(VertexChange(name, mapped, source_key))
             evidence[source_key]["geometry"] = {"reversed_digitization": reverse,
                 "endpoint_display_connectors": list(gaps), "unit": map_unit, "existing_points_preserved": True}
-    extras, extra_evidence, extra_inputs = _extra_instructions(config)
+    if decision_instructions is not None:
+        if config["model"].get("changes_path"):
+            raise ValueError("Consolidated decision instructions cannot be combined with legacy model.changes_path")
+        from copy import deepcopy
+        rows = decision_instructions.get("changes", [])
+        extra_evidence = decision_instructions.get("evidence", {})
+        extra_inputs = decision_instructions.get("side_input_hashes", {})
+        if not isinstance(rows, list) or not isinstance(extra_evidence, Mapping) or not isinstance(extra_inputs, Mapping):
+            raise ValueError("Decision instructions require changes, evidence and side-input hash mappings")
+        extras = [Change(**deepcopy(row)) for row in rows]
+        # A reviewed instruction cannot silently override an automatically
+        # prepared instruction targeting the same model object field.
+        prepared_targets = {(change.section.upper(), _key(change.object_id), field)
+                            for change in changes for field in change.values}
+        for change in extras:
+            if any((change.section.upper(), _key(change.object_id), field) in prepared_targets for field in change.values):
+                raise ValueError("Decision instruction conflicts with a prepared model field")
+    else:
+        extras, extra_evidence, extra_inputs = _extra_instructions(config)
     changes.extend(extras)
     for key, value in extra_evidence.items():
         if key in evidence:

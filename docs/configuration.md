@@ -2,7 +2,7 @@
 
 - Author: Lucas HT Nguyen
 - Contact: [GitHub](https://github.com/lucashtnguyen)
-- Date: 2026-10-14
+- Date: 2026-10-15
 
 Status: Version-1 configuration contract with an implemented umdev 0.1.0 subset.
 `load_config` and `src/umdev/schemas/project.schema.json` now exist. Runtime
@@ -231,6 +231,25 @@ independent of configurable warning severity.
 request and disconnected component. `complete_request` requires all requested
 mandatory parameters. `geometry_review` is a future publication target;
 the current runner rejects it. Use ingestion/preparation for table review. Explicit test assumptions must remain per-object decisions.
+
+### Consolidated manual decisions
+
+`review.ledger_path` names one external version-1 JSON decision ledger, resolved
+against the configuration file declaring the path, including through `extends`.
+The ledger stores `parameter_override`, guarded `model_update`, and non-executable
+`review_record` entries with authorization, rationale, scenario and current evidence.
+Active approvals with stale evidence, stale baseline binding or mismatched expected
+old values raise before publication; legacy `changed_evidence` does not relax this.
+
+A nonempty ledger path is mutually exclusive with nonempty `review.overrides_path`,
+`review.overrides`, and `model.changes_path`. Empty legacy paths/lists are disabled.
+Legacy inputs remain supported in projects without a ledger. Runtime preparation
+injects compiled ledger overrides into an in-memory configuration copy; source
+configuration and source observations are never rewritten. Override policy methods
+remain authoritative. If an active approved override is bypassed by method order or
+preserved baseline policy, preparation raises before output instead of silently
+ignoring the approval. See
+[manual decisions](decisions.md) for the complete ledger contract.
 
 ### Review changes and scope
 

@@ -2,7 +2,7 @@
 
 Author: Lucas HT Nguyen
 Contact: https://github.com/lucashtnguyen
-Date: 2026-10-14
+Date: 2026-10-15
 Manually maintained; configuration cannot execute code or arbitrary SQL.
 """
 
@@ -39,7 +39,7 @@ class ResolvedConfig:
 
 TOP_KEYS = set("schema_version kind metadata extends sources datasets units model identity ports elevations parameters roughness scenarios selection qa review publication extensions".split())
 FIELDS = set("asset_id from_node to_node model_id diameter length upstream_invert downstream_invert material status pipe_kind floor rim vertical_datum outlet_description inlet_description port_id structure_id pipe_id role invert direction review_priority existing_selection future_selection decision description roughness".split())
-PATH_KEYS = {"path", "baseline", "crosswalk_path", "overrides_path", "output_directory", "executable", "version_library", "changes_path"}
+PATH_KEYS = {"path", "baseline", "crosswalk_path", "overrides_path", "ledger_path", "output_directory", "executable", "version_library", "changes_path"}
 FORMAT_IDS = {"json_packet", "json", "csv", "geojson", "geopackage", "file_geodatabase"}
 PARSERS = {"normalized_port_row_v1", "elevation_direction_diameter_v1"}
 
@@ -185,7 +185,7 @@ def _validate_policies(data: dict[str, Any]) -> None:
         "roughness": set("policy_id status parameter rules unknown_material pressure_parameters extensions".split()),
         "selection": set("scenario scope attribution_context asset_filters explicit_pipe_keys extensions".split()),
         "qa": set("profile allow_categories rules readback_absolute_tolerance engine extensions".split()),
-        "review": {"overrides_path", "overrides", "changed_evidence", "extensions"},
+        "review": {"ledger_path", "overrides_path", "overrides", "changed_evidence", "extensions"},
         "publication": set("mode output_directory overwrite_sources formats retain_effective_config extensions".split()),
     }
     for group, keys in groups.items():
@@ -364,6 +364,13 @@ def _validate_policies(data: dict[str, Any]) -> None:
     if "engine" in qa:
         _keys(qa["engine"], {"enabled", "executable", "version_library", "expected_version", "external_resources"}, "qa.engine")
     review = data.get("review", {})
+    ledger_path = review.get("ledger_path")
+    if ledger_path is not None and not isinstance(ledger_path, str):
+        raise ConfigurationError("review.ledger_path must be a path string or null")
+    if isinstance(ledger_path, str) and ledger_path and not ledger_path.strip():
+        raise ConfigurationError("review.ledger_path cannot be whitespace")
+    if ledger_path and (review.get("overrides_path") or review.get("overrides") or model.get("changes_path")):
+        raise ConfigurationError("review.ledger_path is mutually exclusive with nonempty legacy overrides_path, overrides and model.changes_path")
     if review.get("changed_evidence", "mark_stale_and_re_evaluate") not in {"mark_stale_and_re_evaluate", "hold"}:
         raise ConfigurationError("Unsupported changed-evidence policy")
     if "overrides" in review and not isinstance(review["overrides"], list):
@@ -459,7 +466,7 @@ def load_config(path: str | Path) -> ResolvedConfig:
             if isinstance(value, dict):
                 return {key: declared(item, (*trail, key)) for key, item in value.items()}
             origins["/" + "/".join(trail)] = str(file)
-            if trail and trail[-1] in PATH_KEYS and isinstance(value, str):
+            if trail and trail[-1] in PATH_KEYS and isinstance(value, str) and value.strip():
                 return str((file.parent / value).resolve())
             return value
 

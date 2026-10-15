@@ -2,7 +2,7 @@
 
 Author: Lucas HT Nguyen
 Contact: https://github.com/lucashtnguyen
-Date: 2026-10-14
+Date: 2026-10-15
 Manually maintained callable workflow. Project inputs and outputs are caller-owned.
 """
 
@@ -206,6 +206,129 @@ def _topology_source_connectors(canonical: Mapping[str, Any], membership: list[d
     return result
 
 
+def _assert_prepared_inputs_current(project: Mapping[str, Any]) -> None:
+    """Check frozen source, configuration, baseline and decision fingerprints."""
+    if load_config(project["config_path"]).sha256 != project["resolved_config"].sha256:
+        raise ValueError("Configuration changed during application")
+    for source in project["canonical"]["manifest"].values():
+        if sha256(Path(source["path"]).read_bytes()).hexdigest() != source["sha256"]:
+            raise ValueError("Source snapshot changed during application")
+    if sha256(project["baseline_path"].read_bytes()).hexdigest() != project["baseline_sha256"]:
+        raise ValueError("Source baseline changed during application")
+    for name, expected in project["handoff"]["side_input_hashes"].items():
+        if sha256(Path(name).read_bytes()).hexdigest() != expected:
+            raise ValueError("Finished instructions/crosswalk/review evidence changed during application")
+
+
+def _assert_ledger_overrides_selected(prepared: Mapping[str, Any],
+                                      overrides: list[dict[str, Any]]) -> None:
+    """Reject active approved values bypassed by policy or baseline preservation.
+
+    Notes
+    -----
+    Ledger resolution establishes evidence currency and authorization. Field
+    preparation must also demonstrate actual selection; merely attaching an
+    override to a source row does not mean it governs the proposed model value.
+    """
+    nodes = {row["key"]: row for row in prepared["nodes"]}
+    pipes = {row["key"]: row for row in prepared["pipes"]}
+    for override in overrides:
+        key, field = override["source_key"], override["field"]
+        row = nodes.get(key, pipes.get(key, {}))
+        if field in {"length", "diameter"}:
+            method = row.get(field + "_method")
+        else:
+            assignment_field = {"upstream_invert": "upstream", "downstream_invert": "downstream"}.get(field, field)
+            method = row.get("assignments", {}).get(assignment_field, {}).get("method")
+        if method != "reviewed_override":
+            raise ValueError(f"Active approved override {override.get('decision_id', key)!r} "
+                             f"for {key}.{field} was not selected by field policy or preserved baseline")
+
+
+def prepare_project(config_path: str | Path) -> dict[str, Any]:
+    """Resolve and validate a project plan without previewing or writing a model.
+
+    Parameters
+    ----------
+    config_path : str or Path
+        Versioned project configuration with declaration-relative input paths.
+
+    Returns
+    -------
+    dict
+        In-memory bundle with resolved/runtime configurations, immutable hymo
+        baseline, source snapshots, selected keys, prepared rows, membership,
+        frozen handoff, and optional decision ledger snapshot/audit. Path and
+        document/config objects are intentionally retained; this bundle is not
+        itself a JSON artifact. Its prepared/handoff/ledger members are serializable.
+
+    Raises
+    ------
+    ValueError
+        Configuration, current evidence, identity or approved decision validation
+        fails. Stale active ledger approvals never become usable instructions.
+
+    Notes
+    -----
+    This callable creates no directories or artifacts and never invokes SHMM
+    preview/application or an engine. Holds remain available in returned tables;
+    publication completeness and actual writer/readback checks belong to run_project.
+    Baseline/source/decision fingerprints are rechecked before returning.
+    """
+    config_path = Path(config_path).resolve()
+    resolved = load_config(config_path)
+    config = deepcopy(resolved.data)
+    baseline_path = Path(config["model"]["baseline"])
+    baseline = read_document(baseline_path, encoding=config["model"].get("encoding", "utf-8"))
+    baseline_hash = sha256(baseline.data).hexdigest()
+    canonical = ingest_sources(resolved)
+    _check_source_map_basis(canonical, config)
+    side_hashes, crosswalk_snapshot = _crosswalk_canonical(canonical, config)
+    overrides_path = config.get("review", {}).get("overrides_path")
+    if overrides_path:
+        raw = Path(overrides_path).read_bytes()
+        ledger = json.loads(raw)
+        config["review"]["overrides"] = ledger if isinstance(ledger, list) else ledger["overrides"]
+        side_hashes[str(overrides_path)] = sha256(raw).hexdigest()
+    selected, membership = select_pipe_keys(canonical, config, baseline)
+    bind_model_identities(canonical, config, crosswalk_snapshot or {}, selected)
+    decision_instructions = None
+    ledger_path = config.get("review", {}).get("ledger_path")
+    if ledger_path:
+        from .decisions import resolve_decision_ledger
+        decision_instructions = resolve_decision_ledger(ledger_path, canonical, config, baseline,
+                                                        selected_pipe_keys=selected)
+        config.setdefault("review", {})["overrides"] = deepcopy(decision_instructions["overrides"])
+    prepared = prepare_network_from_dict(canonical, config,
+        baseline_nodes=baseline_node_parameters(baseline, config), selected_pipe_keys=selected).to_dict()
+    if decision_instructions is not None:
+        _assert_ledger_overrides_selected(prepared, decision_instructions["overrides"])
+    handoff = compile_handoff(baseline, prepared, config, config_sha256=resolved.sha256,
+                              source_manifest=canonical.get("manifest"), crosswalk_snapshot=crosswalk_snapshot,
+                              decision_instructions=decision_instructions)
+    handoff["side_input_hashes"].update(side_hashes)
+    dispositions = {row["key"]: row for row in prepared["pipes"]}
+    writer_holds = {row["source_key"]: row["reason"] for row in handoff["application_holds"]}
+    applied = set(handoff["applied_source_keys"])
+    for row in membership:
+        if row["source_key"] in dispositions:
+            prepared_row = dispositions[row["source_key"]]
+            row["disposition"] = "applied" if row["source_key"] in applied else "hold"
+            row["reasons"] = prepared_row.get("reasons", [])
+            if row["source_key"] in writer_holds:
+                row["reasons"] = row["reasons"] + [writer_holds[row["source_key"]]]
+    project = {"config_path": config_path, "resolved_config": resolved, "config": config,
+               "baseline_path": baseline_path, "baseline": baseline, "baseline_sha256": baseline_hash,
+               "canonical": canonical, "crosswalk_snapshot": crosswalk_snapshot,
+               "selected_pipe_keys": selected, "membership": membership, "prepared": prepared,
+               "handoff": handoff, "applied_source_keys": sorted(applied),
+               "requested_holds": [row for row in membership if row["disposition"] == "hold"],
+               "decision_ledger": deepcopy(decision_instructions["snapshot"]) if decision_instructions is not None else None,
+               "decision_ledger_audit": deepcopy(decision_instructions["audit"]) if decision_instructions is not None else None}
+    _assert_prepared_inputs_current(project)
+    return project
+
+
 def run_project(config_path: str | Path, *, output_directory: str | Path | None = None) -> dict[str, Any]:
     """Prepare, preview, publish, independently diff and QA a model update.
 
@@ -237,38 +360,16 @@ def run_project(config_path: str | Path, *, output_directory: str | Path | None 
     """
     from shmm import compare_written_model, edit_model, preview_model_diff, write_diff_reports
 
-    resolved = load_config(config_path)
-    config = deepcopy(resolved.data)
-    baseline_path = Path(config["model"]["baseline"])
-    baseline = read_document(baseline_path, encoding=config["model"].get("encoding", "utf-8"))
-    baseline_hash = sha256(baseline.data).hexdigest()
-    canonical = ingest_sources(resolved)
-    _check_source_map_basis(canonical, config)
-    side_hashes, crosswalk_snapshot = _crosswalk_canonical(canonical, config)
-    overrides_path = config.get("review", {}).get("overrides_path")
-    if overrides_path:
-        raw = Path(overrides_path).read_bytes()
-        ledger = json.loads(raw)
-        config["review"]["overrides"] = ledger if isinstance(ledger, list) else ledger["overrides"]
-        side_hashes[str(overrides_path)] = sha256(raw).hexdigest()
-    selected, membership = select_pipe_keys(canonical, config, baseline)
-    bind_model_identities(canonical, config, crosswalk_snapshot or {}, selected)
-    prepared = prepare_network_from_dict(canonical, config,
-        baseline_nodes=baseline_node_parameters(baseline, config), selected_pipe_keys=selected).to_dict()
-    handoff = compile_handoff(baseline, prepared, config, config_sha256=resolved.sha256,
-                              source_manifest=canonical.get("manifest"), crosswalk_snapshot=crosswalk_snapshot)
-    handoff["side_input_hashes"].update(side_hashes)
+    project = prepare_project(config_path)
+    resolved, config = project["resolved_config"], project["config"]
+    baseline_path, baseline = project["baseline_path"], project["baseline"]
+    baseline_hash = project["baseline_sha256"]
+    canonical, crosswalk_snapshot = project["canonical"], project["crosswalk_snapshot"]
+    selected, membership = project["selected_pipe_keys"], project["membership"]
+    prepared, handoff = project["prepared"], project["handoff"]
     dispositions = {row["key"]: row for row in prepared["pipes"]}
-    writer_holds = {row["source_key"]: row["reason"] for row in handoff["application_holds"]}
-    applied = set(handoff["applied_source_keys"])
-    for row in membership:
-        if row["source_key"] in dispositions:
-            prepared_row = dispositions[row["source_key"]]
-            row["disposition"] = "applied" if row["source_key"] in applied else "hold"
-            row["reasons"] = prepared_row.get("reasons", [])
-            if row["source_key"] in writer_holds:
-                row["reasons"] = row["reasons"] + [writer_holds[row["source_key"]]]
-    requested_holds = [row for row in membership if row["disposition"] == "hold"]
+    applied = set(project["applied_source_keys"])
+    requested_holds = project["requested_holds"]
     mode = config["publication"].get("mode", "supported_subnetwork")
     if mode == "complete_request" and requested_holds:
         raise ValueError("Complete-request publication has held mandatory assignments")
@@ -292,6 +393,9 @@ def run_project(config_path: str | Path, *, output_directory: str | Path | None 
     write_json(output / "canonical.json", canonical)
     write_json(output / "prepared.json", prepared)
     write_json(output / "handoff.json", handoff)
+    if project["decision_ledger"] is not None:
+        write_json(output / "decision_ledger.json", project["decision_ledger"])
+        write_json(output / "decision_ledger_audit.json", project["decision_ledger_audit"])
     write_csv(output / "membership.csv", membership)
     write_csv(output / "nodes.csv", prepared["nodes"])
     write_csv(output / "pipes.csv", prepared["pipes"])
@@ -299,16 +403,7 @@ def run_project(config_path: str | Path, *, output_directory: str | Path | None 
     write_diff_reports(preview, output, prefix="preview_diff")
     candidate_path = output / "candidate.inp"
     def assert_inputs_current() -> None:
-        if load_config(config_path).sha256 != resolved.sha256:
-            raise ValueError("Configuration changed during application")
-        for source in canonical["manifest"].values():
-            if sha256(Path(source["path"]).read_bytes()).hexdigest() != source["sha256"]:
-                raise ValueError("Source snapshot changed during application")
-        if sha256(baseline_path.read_bytes()).hexdigest() != baseline_hash:
-            raise ValueError("Source baseline changed during application")
-        for name, expected in handoff["side_input_hashes"].items():
-            if sha256(Path(name).read_bytes()).hexdigest() != expected:
-                raise ValueError("Finished instructions/crosswalk/review evidence changed during application")
+        _assert_prepared_inputs_current(project)
     assert_inputs_current()
     edit_model(baseline_path, changes, output_path=candidate_path, audit_path=output / "application_audit.json",
                vertex_changes=vertices, expected_hash=baseline_hash, encoding=config["model"].get("encoding", "utf-8"))

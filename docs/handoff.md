@@ -2,7 +2,7 @@
 
 - Author: Lucas HT Nguyen
 - Contact: [GitHub](https://github.com/lucashtnguyen)
-- Date: 2026-10-14
+- Date: 2026-10-15
 
 Status: Implemented in umdev 0.1.0 with SHMM >=0.1.2 and hymo >=0.2.1.
 
@@ -103,7 +103,18 @@ in the private project workspace. Public tests contain synthetic networks.
 
 ## Developer README
 
-The orchestrator is `umdev.run_project(config_path, output_directory=None)`.
+Use `umdev.prepare_project(config_path)` for ingestion, identity binding, ledger
+validation, parameter preparation and frozen handoff compilation without filesystem
+outputs or SHMM preview/application. It returns inspectable holds even when a
+complete-request publication would fail. Compiler membership labels `applied` are
+planned acceptance at this stage; they do not report actual model edits.
+
+The publication orchestrator is `umdev.run_project(config_path, output_directory=None)`.
+It shares that same preparation path before previewing and writing. A configured
+ledger adds `decision_ledger.json` and `decision_ledger_audit.json` to the run; its
+compiled changes, attribution and consumed file fingerprints remain in the handoff.
+The compiler rejects a ledger edit targeting a field already set by preparation.
+Decision, source and baseline hashes are rechecked before and after application.
 Lower-level handoff/readback functions live in `umdev.models`.
 Project configuration `schema_version` is integer `1`; the serialized handoff
 and SHMM comparison schema versions are string `"1"`.

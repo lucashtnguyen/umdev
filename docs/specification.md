@@ -2,7 +2,7 @@
 
 - Author: Lucas HT Nguyen
 - Contact: [GitHub](https://github.com/lucashtnguyen)
-- Date: 2026-10-14
+- Date: 2026-10-15
 
 Status: Implementation specification v0.2. Manually maintained.
 The 0.1.0 runtime subset below is implemented. Broader requirements and roadmap
@@ -47,6 +47,19 @@ engineering status and optional engine results; it does not establish calibratio
 The sections below retain the broader target engineering design. Features beyond
 this implemented boundary remain roadmap work, even when described in a design
 example or acceptance requirement.
+
+### Consolidated decision preparation
+
+Implemented `umdev.prepare_project(config_path)` runs the same ingest, identity,
+manual-decision validation, parameter and handoff stages used by publication, with
+no output directories, preview, model writing or engine execution. Returned holds
+and compiler-accepted instructions are plans available for manual inspection.
+
+The external `review.ledger_path` consolidates scenario-specific parameter overrides,
+baseline-bound supported model updates and non-executable review records. Active
+stale approvals fail before candidate generation. Frozen ledger/audit artifacts
+accompany normal runs; legacy override/finished-change inputs remain separately
+supported, with conflicting input modes rejected. See [decisions](decisions.md).
 
 ### Purpose and end goal
 

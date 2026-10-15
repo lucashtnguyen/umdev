@@ -2,7 +2,7 @@
 
 Author: Lucas HT Nguyen
 Contact: https://github.com/lucashtnguyen
-Date: 2026-10-14
+Date: 2026-10-15
 Manually maintained public callable interface; project policy remains configuration.
 """
 
@@ -10,12 +10,13 @@ from importlib import import_module
 from typing import Any
 
 __version__ = "0.1.0"
-__all__ = ["load_config", "ingest_sources", "prepare_network_from_dict", "run_project"]
+__all__ = ["load_config", "ingest_sources", "prepare_network_from_dict", "prepare_project", "run_project"]
 
 _EXPORTS = {
     "load_config": ("configuration", "load_config"),
     "ingest_sources": ("sources", "ingest_sources"),
     "prepare_network_from_dict": ("parameters", "prepare_network_from_dict"),
+    "prepare_project": ("pipeline", "prepare_project"),
     "run_project": ("pipeline", "run_project"),
 }
 

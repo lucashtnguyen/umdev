@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lucashtnguyen/umdev/schemas/project.schema.json",
   "title": "umdev schema version 1 supported project configuration",
-  "description": "Author Lucas HT Nguyen; contact https://github.com/lucashtnguyen; date 2026-10-14. Structural contract; Python semantic validation additionally checks engineering policies, references, units and driver capabilities.",
+  "description": "Author Lucas HT Nguyen; contact https://github.com/lucashtnguyen; date 2026-10-15. Structural contract; Python semantic validation additionally checks engineering policies, references, units and driver capabilities.",
   "type": "object",
   "required": [
     "schema_version",
@@ -89,7 +89,35 @@
       "type": "object"
     },
     "review": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ledger_path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^$|\\S"
+        },
+        "overrides_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "overrides": {
+          "type": "array"
+        },
+        "changed_evidence": {
+          "enum": [
+            "mark_stale_and_re_evaluate",
+            "hold"
+          ]
+        },
+        "extensions": {
+          "type": "object"
+        }
+      }
     },
     "publication": {
       "type": "object"
@@ -233,5 +261,54 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "review"
+        ],
+        "properties": {
+          "review": {
+            "required": [
+              "ledger_path"
+            ],
+            "properties": {
+              "ledger_path": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "review": {
+            "properties": {
+              "overrides_path": {
+                "enum": [
+                  null,
+                  ""
+                ]
+              },
+              "overrides": {
+                "maxItems": 0
+              }
+            }
+          },
+          "model": {
+            "properties": {
+              "changes_path": {
+                "enum": [
+                  null,
+                  ""
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

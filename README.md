@@ -2,7 +2,7 @@
 
 - Author: Lucas HT Nguyen
 - Contact: [GitHub](https://github.com/lucashtnguyen)
-- Date: 2026-10-14
+- Date: 2026-10-15
 - Status: Implemented 0.1.0 callable runtime with explicit capability limits.
 
 ## Summary
@@ -46,6 +46,27 @@ before publication and an independent written-model diff after actual file readb
 umdev verifies prepared floors, reconstructed rims, pipe-end elevations, dimensions
 and grades, then reports profile and connectivity findings.
 
+### Queued decisions and read-only preparation
+
+Keep one external JSON ledger under `review.ledger_path` for approved parameter
+interpretations, guarded existing-model edits and non-executable review records.
+It records who authorized each decision, why, scenario, evidence fingerprints and
+baseline binding where required. Proposed, rejected, archived and other-scenario
+entries do not execute. Active stale approvals fail before model publication. An active parameter approval
+also fails if the configured field policy or preserved baseline prevents its selection.
+The ledger cannot be combined with nonempty legacy override or finished-change
+inputs. Existing callers can continue using those legacy inputs separately.
+See [manual decisions](docs/decisions.md) for supported fields and the full contract.
+
+Call `umdev.prepare_project(config_path)` to inspect a queued plan without creating
+files, a preview, a candidate or engine results. The returned bundle includes
+`canonical`, `prepared`, `membership`, `handoff`, `requested_holds`, and optional
+`decision_ledger`/`decision_ledger_audit`; it also retains configuration and immutable
+baseline objects for further orchestration. Membership `applied` and handoff
+`applied_source_keys` retain their compiler vocabulary: during preparation they
+mean accepted into the planned instructions, not written or hydraulically accepted.
+Only `run_project` performs preview, writing and independent readback verification.
+
 ### Outputs and manual QA
 
 Keep project sources, model files, actual IDs, configuration, crosswalks, reviewed
@@ -58,6 +79,8 @@ A new run directory contains:
 - `prepared.json`, `nodes.csv`, `pipes.csv`, `findings.csv`, `membership.csv`:
   assignments, assumptions, references and requested dispositions/holds.
 - `handoff.json`: frozen target-unit instructions, evidence, scenario and fingerprints.
+- `decision_ledger.json` and `decision_ledger_audit.json`, when a ledger is configured:
+  the complete frozen ledger and each entry's applicability/execution-plan status.
 - `preview_diff.json/.csv/.html` and `written_model_diff.json/.csv/.html`:
   requests/no-ops, observed/missing/unexpected effects and exact preservation checks.
 - `candidate.inp`, `application_audit.json`, `profile_verification.json`:
@@ -134,14 +157,14 @@ not exist; omitting it creates a timestamped child of the configured output root
 Relative resource paths resolve against the configuration file declaring them.
 
 Public functions: `load_config`, `ingest_sources`, `prepare_network_from_dict`,
-`run_project`. Lower-level `umdev.models` functions `compile_handoff`,
+`prepare_project`, `run_project`. Lower-level `umdev.models` functions `compile_handoff`,
 `instructions_from_handoff`, `verify_prepared_profiles` and
 `candidate_engineering_qa` support separate orchestration and review.
 `umdev.topology.diagnose_topology` and `diagnose_swmm_topology` expose read-only
 component, directed-route and source-connector diagnostics.
 
 Modules are under `src/umdev`: configuration, sources, records, evidence, parameters,
-models, pipeline, qa, topology, reporting and units. `schemas/project.schema.json` describes
+models, pipeline, decisions, qa, topology, reporting and units. `schemas/project.schema.json` describes
 version 1; runtime semantic/source/capability validation is also required.
 Add ordinary field names, domains and policies through private configuration;
 new formats, grammars or model operations require explicit implementation/tests.
@@ -149,5 +172,6 @@ new formats, grammars or model operations require explicit implementation/tests.
 Run `python -m pytest`. Synthetic tests cover schema equivalence through config,
 units/datums, evidence conflicts and provisional fallback, floors/rims/offsets,
 roughness, scoped overrides, deterministic selection, source preservation, written
-profiles and SHMM diff integration. Engine paths/version must be explicitly enabled;
+profiles, consolidated-ledger staleness and non-executable records, read-only project
+preparation, and SHMM diff integration. Engine paths/version must be explicitly enabled;
 simulation is not a default. No repository lint/format command is prescribed.
