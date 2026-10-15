@@ -1,6 +1,7 @@
 # umdev utility model development specification
 
 - Author: Lucas HT Nguyen
+- Last modified by: Lucas HT Nguyen
 - Contact: [GitHub](https://github.com/lucashtnguyen)
 - Date: 2026-10-15
 
@@ -559,3 +560,14 @@ The downstream interfaces were inspected in the local hymo and SHMM repositories
 their broader planned features are not treated as implemented. SWMM node/link field
 semantics follow the [EPA SWMM 5.2 User's Manual](https://nepis.epa.gov/Exe/ZyPURL.cgi?Dockey=P10145M6.TXT),
 including link-offset conventions and closed-conduit roughness guidance.
+
+### Structure-first floors
+
+New floor policies use a reviewed override, then the minimum usable structure
+pipe-invert record, then the minimum local accepted incoming/outgoing model-pipe
+end. Source observations and applied-model membership are separate concepts.
+Unselected/held/writer-rejected pipes cannot donate fallback ends; read-only
+preparation prunes donors to convergence. Disabling pipe_numeric in evidence
+precedence excludes the GIS fields completely from attribution/conflict/fallback.
+Existing floor proposals are reported separately from preserved baseline floors.
+See [floor policy](floors.md).

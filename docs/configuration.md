@@ -1,6 +1,7 @@
 # umdev reusable configuration contract
 
 - Author: Lucas HT Nguyen
+- Last modified by: Lucas HT Nguyen
 - Contact: [GitHub](https://github.com/lucashtnguyen)
 - Date: 2026-10-15
 
@@ -26,7 +27,7 @@ The broader GeoPackage design example below is not a current-driver demonstratio
 | Port parsers | `normalized_port_row_v1` and `elevation_direction_diameter_v1` with configured fields/roles/units |
 | Direction | `hint` permits configured unique role/diameter provisional fallback; `strict` withholds mismatching/unverified declared directions |
 | Datum | `identity` or signed `constant_offset` with basis, verification, precedence and optional `asset_ids`/`source_keys` |
-| Floors | `reviewed_override`, `structure_floor`, `unique_active_outgoing_port`, or explicitly configured `lowest_active_port`/`minimum_active_port` |
+| Floors | New default: `reviewed_override`, `lowest_structure_port`, `lowest_applied_pipe_end`; explicit legacy methods remain supported |
 | Rims | `reviewed_override` or `structure_rim` |
 | Pipe measurements | Reviewed/attribute length and diameter; explicit `geometry_length` alternative |
 | Roughness | Gravity `manning_n` with exact aliases and optional reference ranges; unknown material holds or uses an explicit assumption |
@@ -142,7 +143,10 @@ Multiple measurements, cap/drop/stub qualifiers, unsupported unit suffixes and
 competing assignments remain unresolved or explicitly held rather than having
 qualifiers stripped away.
 
-The `ports.assignment.precedence` list orders evidence families. `reviewed_override`
+The `ports.assignment.precedence` list enables and orders evidence families.
+An omitted family is disabled, including fallback and contradiction checks.
+For structure-only pipe elevations, omit `pipe_numeric` while retaining
+`reviewed_override`, `normalized_port` and `inline_port`. `reviewed_override`
 references the decision ledger, `pipe_numeric` uses direct endpoint attributes,
 `normalized_port` uses the port table, and `inline_port` uses descriptions.
 
@@ -159,6 +163,17 @@ connection with a compass mismatch; competing candidates remain held. Tolerances
 describe matching uncertainty and are not universal engineering thresholds.
 
 ### Floors, rims, offsets and estimates
+
+New configurations without `floor_methods` use `reviewed_override`,
+`lowest_structure_port`, then `lowest_applied_pipe_end`. The structure minimum
+uses independent usable observations at the manhole, including unmatched ports.
+The fallback uses only that manhole's local modeled end: downstream for incoming,
+upstream for outgoing. It never takes the remote minimum of both ends or uses
+unmodeled GIS branches. `prepare_project` prunes donors until every source donor
+is accepted by the compiler and retains a `floor_donor_audit`; rejected pipes
+cannot revive as non-donors. See [floor policy](floors.md) for evidence and limits.
+Existing baseline nodes retain `proposed_floor_assignment` for review while their
+actual floors remain preserved; material differences are engineering findings.
 
 `floor_methods` and `rim_methods` are ordered sources/derivations. A structure floor
 field is distinct from an outgoing-port-derived floor. If a method yields competing

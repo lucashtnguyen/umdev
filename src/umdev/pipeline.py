@@ -1,6 +1,7 @@
 """Run a configuration-driven utility preparation and audited model update.
 
 Author: Lucas HT Nguyen
+Last modified by: Lucas HT Nguyen
 Contact: https://github.com/lucashtnguyen
 Date: 2026-10-15
 Manually maintained callable workflow. Project inputs and outputs are caller-owned.
@@ -19,9 +20,10 @@ from typing import Any, Mapping
 from hymo import read_document
 
 from .configuration import load_config
-from .models import bind_model_identities, resolve_model_identity, validate_crosswalk, baseline_node_parameters, candidate_engineering_qa, compile_handoff, instructions_from_handoff, verify_prepared_profiles
-from .parameters import prepare_network_from_dict
+from .models import bind_model_identities, resolve_model_identity, validate_crosswalk, baseline_node_parameters, baseline_pipe_end_parameters, candidate_engineering_qa, compile_handoff, instructions_from_handoff, verify_prepared_profiles
+from .parameters import DEFAULT_FLOOR_METHODS, prepare_network_from_dict
 from .reporting import json_value, stable_hash, write_csv, write_json, write_review_html
+from .qa import connectivity_findings
 from .sources import ingest_sources, matches_predicates
 from .topology import diagnose_swmm_topology
 from .units import to_metres
@@ -299,13 +301,78 @@ def prepare_project(config_path: str | Path) -> dict[str, Any]:
         decision_instructions = resolve_decision_ledger(ledger_path, canonical, config, baseline,
                                                         selected_pipe_keys=selected)
         config.setdefault("review", {})["overrides"] = deepcopy(decision_instructions["overrides"])
-    prepared = prepare_network_from_dict(canonical, config,
-        baseline_nodes=baseline_node_parameters(baseline, config), selected_pipe_keys=selected).to_dict()
-    if decision_instructions is not None:
-        _assert_ledger_overrides_selected(prepared, decision_instructions["overrides"])
-    handoff = compile_handoff(baseline, prepared, config, config_sha256=resolved.sha256,
-                              source_manifest=canonical.get("manifest"), crosswalk_snapshot=crosswalk_snapshot,
-                              decision_instructions=decision_instructions)
+    baseline_nodes = baseline_node_parameters(baseline, config)
+    uses_applied_floor = "lowest_applied_pipe_end" in config.get("parameters", {}).get("nodes", {}).get("floor_methods", DEFAULT_FLOOR_METHODS)
+    donor_keys = set(selected)
+    rejected: dict[str, dict[str, Any]] = {}
+    baseline_ends = baseline_pipe_end_parameters(baseline, config) if uses_applied_floor else {}
+    ascii_upper = str.maketrans("abcdefghijklmnopqrstuvwxyz", "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+    pipe_ids = {row["key"]: row["model_id"].translate(ascii_upper)
+                for row in canonical["pipes"] if row["key"] in donor_keys}
+    floor_donor_audit = None
+    legacy_changes_path = config["model"].get("changes_path")
+    legacy_changes_hash = sha256(Path(legacy_changes_path).read_bytes()).hexdigest() if legacy_changes_path else None
+    # Every rejection removes a donor permanently. Keeping requested rows while
+    # freezing rejections prevents a formerly held pipe from reviving as an
+    # accepted non-donor and changing the meaning of the minimum floor.
+    for iteration in range(len(selected) + 1):
+        preparation_options: dict[str, Any] = {"baseline_nodes": baseline_nodes, "selected_pipe_keys": selected}
+        if uses_applied_floor:
+            replacing_ids = {pipe_ids[key] for key in donor_keys}
+            model_ends = {node: [row for row in rows if row["model_id"].translate(ascii_upper) not in replacing_ids]
+                          for node, rows in baseline_ends.items()}
+            preparation_options.update(floor_donor_pipe_keys=sorted(donor_keys), model_pipe_ends=model_ends)
+        prepared = prepare_network_from_dict(canonical, config, **preparation_options).to_dict()
+        for row in prepared["pipes"]:
+            if row["key"] in rejected:
+                rejection = rejected[row["key"]]
+                row["disposition"] = "hold"
+                row["reasons"] = sorted(set(row.get("reasons", [])) | set(rejection["reasons"]))
+                row["floor_donor_rejection"] = deepcopy(rejection)
+        if rejected:
+            prepared["held"] = [deepcopy(row) for group in ("nodes", "pipes") for row in prepared[group]
+                                if row.get("disposition") == "hold"]
+            # Core attribution still sees every requested source row. Rebuild
+            # prepared connectivity after the frozen application mask so held
+            # source bridges cannot merge otherwise separate planned networks.
+            prepared["findings"] = [row for row in prepared["findings"] if row.get("rule") != "disconnected_component"]
+            prepared["findings"].extend(connectivity_findings(prepared["pipes"], config))
+        if decision_instructions is not None:
+            _assert_ledger_overrides_selected(prepared, decision_instructions["overrides"])
+        handoff = compile_handoff(baseline, prepared, config, config_sha256=resolved.sha256,
+                                  source_manifest=canonical.get("manifest"), crosswalk_snapshot=crosswalk_snapshot,
+                                  decision_instructions=decision_instructions)
+        if legacy_changes_path and handoff["side_input_hashes"].get(str(legacy_changes_path)) != legacy_changes_hash:
+            raise ValueError("Legacy finished instructions changed during preparation")
+        accepted = set(handoff["applied_source_keys"])
+        if not uses_applied_floor:
+            break
+        removed = donor_keys - accepted
+        if not removed:
+            if accepted != donor_keys:
+                raise ValueError("Applied pipe-end floor donors differ from accepted source instructions")
+            for source_key, rejection in sorted(rejected.items()):
+                for reason in rejection["reasons"]:
+                    handoff["application_holds"].append({"source_key": source_key,
+                        "asset_id": rejection["asset_id"], "reason": reason,
+                        "floor_donor_rejection_iteration": rejection["iteration"]})
+            floor_donor_audit = {"iterations": iteration + 1, "accepted_source_keys": sorted(accepted),
+                "rejections": [{"source_key": key, **deepcopy(value)} for key, value in sorted(rejected.items())],
+                "baseline_model_end_count": sum(map(len, model_ends.values())),
+                "model_generation": "not_performed_by_floor_donor_resolution"}
+            break
+        writer_reasons: dict[str, list[str]] = {}
+        for hold in handoff["application_holds"]:
+            writer_reasons.setdefault(hold["source_key"], []).append(hold["reason"])
+        for row in prepared["pipes"]:
+            if row["key"] in removed:
+                reasons = sorted(set(row.get("reasons", [])) | set(writer_reasons.get(row["key"], [])))
+                rejected[row["key"]] = {"asset_id": row["asset_id"], "iteration": iteration + 1,
+                    "reasons": reasons or ["not_accepted_for_applied_floor_context"],
+                    "original_prepared_disposition": row["disposition"]}
+        donor_keys.intersection_update(accepted)
+    else:
+        raise RuntimeError("Applied pipe-end floor resolution failed to converge monotonically")
     handoff["side_input_hashes"].update(side_hashes)
     dispositions = {row["key"]: row for row in prepared["pipes"]}
     writer_holds = {row["source_key"]: row["reason"] for row in handoff["application_holds"]}
@@ -323,6 +390,7 @@ def prepare_project(config_path: str | Path) -> dict[str, Any]:
                "selected_pipe_keys": selected, "membership": membership, "prepared": prepared,
                "handoff": handoff, "applied_source_keys": sorted(applied),
                "requested_holds": [row for row in membership if row["disposition"] == "hold"],
+               "floor_donor_audit": floor_donor_audit,
                "decision_ledger": deepcopy(decision_instructions["snapshot"]) if decision_instructions is not None else None,
                "decision_ledger_audit": deepcopy(decision_instructions["audit"]) if decision_instructions is not None else None}
     _assert_prepared_inputs_current(project)
@@ -393,6 +461,8 @@ def run_project(config_path: str | Path, *, output_directory: str | Path | None 
     write_json(output / "canonical.json", canonical)
     write_json(output / "prepared.json", prepared)
     write_json(output / "handoff.json", handoff)
+    if project["floor_donor_audit"] is not None:
+        write_json(output / "floor_donor_audit.json", project["floor_donor_audit"])
     if project["decision_ledger"] is not None:
         write_json(output / "decision_ledger.json", project["decision_ledger"])
         write_json(output / "decision_ledger_audit.json", project["decision_ledger_audit"])

@@ -1,8 +1,9 @@
 """Resolve utility observations with explicit evidence ranking and QA flags.
 
 Author: Lucas HT Nguyen
+Last modified by: Lucas HT Nguyen
 Contact: https://github.com/lucashtnguyen
-Date: 2026-10-14
+Date: 2026-10-15
 Manually maintained. Canonical numeric elevations/diameters use metres.
 """
 from __future__ import annotations
@@ -200,7 +201,8 @@ def choose_assignment(candidates: Sequence[Mapping[str, Any]], *, precedence: Se
     -----
     A higher-ranked missing value cannot suppress a usable lower-ranked source.
     Equal-ranked conflicting measurements never use input order as a tie breaker.
-    Distinct lower-ranked alternatives may be retained as provisional evidence.
+    Distinct lower-ranked enabled alternatives may be retained as provisional evidence.
+    Families omitted from precedence are disabled, including fallback/conflict use.
     """
     ranking = {family: rank for rank, family in enumerate(precedence)}
     def rank(row: Mapping[str, Any]) -> tuple[int, int]:
@@ -210,7 +212,8 @@ def choose_assignment(candidates: Sequence[Mapping[str, Any]], *, precedence: Se
         association = {"explicit_pipe_reference": 0, "role_diameter_direction": 1,
                        "unique_role_diameter_fallback": 3}.get(row.get("method"), 0)
         return ranking.get(row.get("family"), len(ranking)), association
-    usable = sorted((dict(row) for row in candidates if finite_number(row.get("value")) is not None),
+    usable = sorted((dict(row) for row in candidates if row.get("family") in ranking
+                     and finite_number(row.get("value")) is not None),
                     key=lambda row: (*rank(row), str(row.get("source_key", ""))))
     if not usable:
         return Assignment(None, "unresolved", "no_usable_evidence", flags=("missing_required_evidence",))
@@ -234,6 +237,41 @@ def choose_assignment(candidates: Sequence[Mapping[str, Any]], *, precedence: Se
     return Assignment(chosen["value"], category, chosen.get("method", chosen.get("family", "ranked_evidence")),
                       evidence=(chosen,), alternatives=tuple(row for row in usable if row is not chosen),
                       flags=tuple(sorted(flags)))
+
+
+def collect_structure_ports(network: Network, config: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Collect configured structure observations independently of pipe matching.
+
+    Notes
+    -----
+    Canonical normalized port rows and parsed structure descriptions retain their
+    original values, source keys, units/datum and parsing flags. An otherwise
+    usable structure invert need not match an applied pipe to describe its floor.
+    No numeric attribute from the pipe GIS table is included here.
+    """
+    ports = [{"family": "normalized_port", **dict(port)} for port in network.ports]
+    node_datasets: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for node in network.nodes:
+        node_datasets[str(node.get("dataset", ""))].append(node)
+    for observation in config.get("ports", {}).get("observations", []):
+        if observation.get("parser") == "normalized_port_row_v1":
+            continue
+        if observation.get("parser") != "elevation_direction_diameter_v1":
+            raise ValueError(f"Unsupported port parser: {observation.get('parser')!r}")
+        selected_nodes = node_datasets.get(observation.get("dataset", ""), [])
+        for node in selected_nodes:
+            field = observation["field"]
+            text = node.get(field)
+            if text is None:
+                text = node.get("source_attributes", {}).get(field)
+            if text in (None, ""):
+                continue
+            units = observation["units"]
+            ports.append(parse_inline_port(text, node_id=node["asset_id"],
+                key=f"{node['key']}/{observation['id']}", role=observation["role"],
+                elevation_unit=units["elevation"], diameter_unit=units["diameter"],
+                vertical_datum=node.get("vertical_datum")))
+    return sorted(ports, key=lambda row: row["key"])
 
 
 def resolve_ports(network: Network, config: Mapping[str, Any]) -> tuple[dict[tuple[str, str], Assignment], list[dict[str, Any]]]:
@@ -265,15 +303,16 @@ def resolve_ports(network: Network, config: Mapping[str, Any]) -> tuple[dict[tup
                                              ("downstream", "to_node", "in", "downstream_invert")):
             identity = pipe.get(node_field)
             node = nodes.get(identity, {})
-            datum = pipe.get(f"{field}_datum", pipe.get("vertical_datum"))
-            if datum is None and policy.get("pipe_numeric_datum") == "node":
-                datum = node.get("vertical_datum")
-            assignment = normalize_elevation(pipe.get(field), datum, config, source_key=pipe["key"], asset_id=pipe["asset_id"])
-            if assignment.value is not None:
-                candidates[(pipe["key"], end)].append({"value": assignment.value,
-                    "source_key": pipe["key"], "field": field, "family": "pipe_numeric",
-                    "category": assignment.category, "flags": list(assignment.flags),
-                    "normalization": assignment.to_dict()})
+            if "pipe_numeric" in precedence:
+                datum = pipe.get(f"{field}_datum", pipe.get("vertical_datum"))
+                if datum is None and policy.get("pipe_numeric_datum") == "node":
+                    datum = node.get("vertical_datum")
+                assignment = normalize_elevation(pipe.get(field), datum, config, source_key=pipe["key"], asset_id=pipe["asset_id"])
+                if assignment.value is not None:
+                    candidates[(pipe["key"], end)].append({"value": assignment.value,
+                        "source_key": pipe["key"], "field": field, "family": "pipe_numeric",
+                        "category": assignment.category, "flags": list(assignment.flags),
+                        "normalization": assignment.to_dict()})
             reviewed = pipe.get("_reviewed_overrides", {}).get(field)
             if reviewed is not None:
                 review_value = normalize_elevation(reviewed["value_m"], reviewed["vertical_datum"], config,
@@ -286,28 +325,7 @@ def resolve_ports(network: Network, config: Mapping[str, Any]) -> tuple[dict[tup
             if pipe.get("status") not in excluded_context:
                 incidents[str(identity)].append({"pipe": pipe, "end": end, "role": role,
                     "bearing": _outward_bearing(pipe, node, snap)})
-    ports = [dict(port) for port in network.ports]
-    node_datasets: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for node in network.nodes:
-        node_datasets[str(node.get("dataset", ""))].append(node)
-    for observation in config.get("ports", {}).get("observations", []):
-        if observation.get("parser") == "normalized_port_row_v1":
-            continue
-        if observation.get("parser") != "elevation_direction_diameter_v1":
-            raise ValueError(f"Unsupported port parser: {observation.get('parser')!r}")
-        selected_nodes = node_datasets.get(observation.get("dataset", ""), [])
-        for node in selected_nodes:
-            field = observation["field"]
-            text = node.get(field)
-            if text is None:
-                text = node.get("source_attributes", {}).get(field)
-            if text in (None, ""):
-                continue
-            units = observation["units"]
-            ports.append(parse_inline_port(text, node_id=node["asset_id"],
-                key=f"{node['key']}/{observation['id']}", role=observation["role"],
-                elevation_unit=units["elevation"], diameter_unit=units["diameter"],
-                vertical_datum=node.get("vertical_datum")))
+    ports = collect_structure_ports(network, config)
     for port in sorted(ports, key=lambda row: row["key"]):
         node_id = str(port.get("structure_id", port.get("node_id", "")))
         role = {"inlet": "in", "outlet": "out"}.get(port.get("role"), port.get("role"))

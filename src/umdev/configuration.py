@@ -1,6 +1,7 @@
 """Declaration-relative configuration overlays and supported-contract validation.
 
 Author: Lucas HT Nguyen
+Last modified by: Lucas HT Nguyen
 Contact: https://github.com/lucashtnguyen
 Date: 2026-10-15
 Manually maintained; configuration cannot execute code or arbitrary SQL.
@@ -296,7 +297,7 @@ def _validate_policies(data: dict[str, Any]) -> None:
         if transform.get("applicability"):
             raise ConfigurationError("Generic transform applicability predicates are not implemented; use asset_ids/source_keys")
     node_policy = data.get("parameters", {}).get("nodes", {})
-    if set(node_policy.get("floor_methods", [])) - {"reviewed_override", "structure_floor", "unique_active_outgoing_port", "lowest_active_port", "minimum_active_port"}:
+    if set(node_policy.get("floor_methods", [])) - {"reviewed_override", "structure_floor", "unique_active_outgoing_port", "lowest_active_port", "minimum_active_port", "lowest_structure_port", "lowest_applied_pipe_end"}:
         raise ConfigurationError("Unsupported node-floor method")
     if set(node_policy.get("rim_methods", [])) - {"reviewed_override", "structure_rim"}:
         raise ConfigurationError("Unsupported node-rim method")

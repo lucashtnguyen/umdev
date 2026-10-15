@@ -1,6 +1,7 @@
 """Compile finished utility parameters into SHMM operations and diff reports.
 
 Author: Lucas HT Nguyen
+Last modified by: Lucas HT Nguyen
 Contact: https://github.com/lucashtnguyen
 Date: 2026-10-15
 Manually maintained. SHMM exclusively writes model files; no raw GIS inference.
@@ -162,6 +163,72 @@ def baseline_node_parameters(document: SWMMDocument, config: Mapping[str, Any]) 
     return result
 
 
+def baseline_pipe_end_parameters(document: SWMMDocument, config: Mapping[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """Read local absolute conduit-end elevations from the immutable baseline.
+
+    Parameters
+    ----------
+    document : SWMMDocument
+        Existing model; only CONDUITS provide pipe-end elevations.
+    config : mapping
+        Validated target model units, datum, horizontal basis and offset convention.
+
+    Returns
+    -------
+    dict
+        Original model-node IDs to deterministic conduit-end evidence records in
+        metres, including conduit ID, local end and baseline byte fingerprint.
+
+    Raises
+    ------
+    ValueError
+        Node/link identities collide, a node reference is missing, or an elevation
+        or offset is missing, nonfinite or unsupported (including ``*`` tokens).
+
+    Notes
+    -----
+    DEPTH absolute end = local node invert + that end's offset. ELEVATION uses
+    the explicit absolute end value. Node invert positions are common to
+    JUNCTIONS, STORAGE, OUTFALLS and DIVIDERS; no rim or storage curve is inferred.
+    Pumps, weirs, outlets and orifices supply no conduit-end evidence.
+    """
+    _validate_model_basis(document, config)
+    unit = config["model"]["target"]["length_unit"]
+    convention = config["model"]["target"]["link_offsets"]
+    fingerprint = sha256(document.data).hexdigest()
+    nodes: dict[str, tuple[str, float]] = {}
+    for section in _NODE_SECTIONS:
+        for record in document.records(section):
+            identity = _key(record.tokens[0])
+            if identity in nodes:
+                raise ValueError("Case-insensitive baseline node identity collision")
+            if len(record.tokens) < 2:
+                raise ValueError("Baseline pipe context requires an explicit node invert")
+            nodes[identity] = (record.tokens[0], to_metres(record.tokens[1], unit))
+    context: dict[str, list[dict[str, Any]]] = {}
+    seen: set[str] = set()
+    for record in document.records("CONDUITS"):
+        identity = _key(record.tokens[0])
+        if identity in seen:
+            raise ValueError("Case-insensitive baseline conduit identity collision")
+        seen.add(identity)
+        if len(record.tokens) < 7:
+            raise ValueError("Baseline pipe context requires explicit local conduit offsets")
+        for end, node_id, offset_token in zip(("upstream", "downstream"), record.tokens[1:3], record.tokens[5:7], strict=True):
+            if _key(node_id) not in nodes:
+                raise ValueError("Baseline conduit endpoint node is absent")
+            canonical_id, floor_m = nodes[_key(node_id)]
+            offset_m = to_metres(offset_token, unit)
+            invert_m = floor_m + offset_m if convention == "DEPTH" else offset_m
+            if not math.isfinite(invert_m):
+                raise ValueError("Baseline absolute pipe-end elevation is nonfinite")
+            context.setdefault(canonical_id, []).append({"model_id": record.tokens[0],
+                "node_id": canonical_id, "end": end, "invert_m": invert_m,
+                "basis": "baseline_model", "baseline_sha256": fingerprint})
+    return {identity: sorted(rows, key=lambda row: (_key(row["model_id"]), row["end"]))
+            for identity, rows in sorted(context.items(), key=lambda item: _key(item[0]))}
+
+
 def _validate_model_basis(document: SWMMDocument, config: Mapping[str, Any]) -> None:
     """Require explicit target units/options compatible with the supplied baseline."""
     target = config["model"]["target"]
@@ -196,6 +263,32 @@ def _extra_instructions(config: Mapping[str, Any]) -> tuple[list[Change], dict[s
     if not isinstance(rows, list) or not isinstance(evidence, dict):
         raise ValueError("Finished changes require a changes list and evidence mapping")
     return [Change(**row) for row in rows], evidence, {str(path): sha256(data).hexdigest()}
+
+
+def _guard_legacy_applied_floor_context(extras: Sequence[Change], config: Mapping[str, Any]) -> None:
+    """Reject legacy operations that invalidate the frozen local-end floor basis.
+
+    Notes
+    -----
+    A separate legacy instruction packet is not part of monotone source-pipe
+    acceptance. Its topology/node-invert/offset changes therefore cannot be used
+    safely with applied-end floor inference. Dimension-only updates leave the
+    local absolute end elevations intact and remain supported.
+    """
+    from .parameters import DEFAULT_FLOOR_METHODS
+    methods = config.get("parameters", {}).get("nodes", {}).get("floor_methods", DEFAULT_FLOOR_METHODS)
+    if "lowest_applied_pipe_end" not in methods:
+        return
+    for change in extras:
+        section = change.section.upper()
+        affects_ends = (section == "CONDUITS" and
+            (change.action != "update" or bool(set(change.values) &
+             {"inlet_node", "outlet_node", "inlet_offset", "outlet_offset"})))
+        affects_node_invert = (section in _NODE_SECTIONS and
+            (change.action != "update" or "invert_elevation" in change.values))
+        if affects_ends or affects_node_invert:
+            raise ValueError("Legacy finished changes affecting hydraulic pipe ends are unsupported "
+                             "with lowest_applied_pipe_end floor inference")
 
 
 def compile_handoff(document: SWMMDocument, prepared: Mapping[str, Any],
@@ -399,6 +492,7 @@ def compile_handoff(document: SWMMDocument, prepared: Mapping[str, Any],
                 raise ValueError("Decision instruction conflicts with a prepared model field")
     else:
         extras, extra_evidence, extra_inputs = _extra_instructions(config)
+        _guard_legacy_applied_floor_context(extras, config)
     changes.extend(extras)
     for key, value in extra_evidence.items():
         if key in evidence:

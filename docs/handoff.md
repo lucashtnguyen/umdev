@@ -1,6 +1,7 @@
 # umdev to SHMM handoff and manual model QA
 
 - Author: Lucas HT Nguyen
+- Last modified by: Lucas HT Nguyen
 - Contact: [GitHub](https://github.com/lucashtnguyen)
 - Date: 2026-10-15
 
@@ -123,6 +124,32 @@ The callable SHMM contract is `preview_model_diff`,
 `compare_written_model` and `write_diff_reports`. The adapter instantiates SHMM
 Change/VertexChange records; it does not write INP text itself. Use
 `preview_changes`/`edit_model` for the existing preserving transaction.
+
+For the `lowest_applied_pipe_end` floor fallback, preparation uses a monotone
+read-only eligibility loop. It prepares the original requested rows, compiles the
+supported handoff, removes rejected pipes from floor donation, then repeats until
+the donor set equals the accepted source-instruction set. Rejected rows retain
+their first reasons and remain held; they cannot revive as accepted non-donors.
+This may conservatively retain a hold that a different engineering policy could
+resolve. The optional `floor_donor_audit` bundle member records passes, accepted
+keys and rejection reasons; normal publication writes `floor_donor_audit.json`.
+
+The baseline context reader `baseline_pipe_end_parameters` uses actual CONDUITS
+only. At a local end, DEPTH adds its explicit offset to that node's invert;
+ELEVATION uses the explicit absolute end value. JUNCTIONS, STORAGE, OUTFALLS and
+DIVIDERS provide their own invert fields, with no inferred rims or pump/regulator
+levels. Missing, nonfinite and `*` offsets are unsupported here and fail explicitly.
+Baseline ends superseded by planned accepted source updates are removed from
+context; retained unchanged conduits keep their original local ends and byte hash.
+Legacy finished changes that add/delete conduits, change their endpoints or
+offsets, or change node invert elevations are rejected when applied-end floor
+inference is enabled: those independent edits would invalidate the frozen context.
+Legacy length and diameter updates remain supported and fingerprinted. Prepared
+connectivity findings are rebuilt after frozen rejections, so held bridges cannot
+join accepted source networks in those diagnostics.
+Structure records retain priority, and existing model floor preservation still
+prevents implicit dependent-end edits. No source GIS US/DS numeric field becomes
+a structure observation merely by participating in this planning loop.
 
 Implemented build order: prepare -> freeze handoff -> preview diff -> publish candidate
 -> read actual file -> written-model diff -> umdev engineering QA -> completion

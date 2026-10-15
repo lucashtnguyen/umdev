@@ -1,6 +1,7 @@
 # umdev
 
 - Author: Lucas HT Nguyen
+- Last modified by: Lucas HT Nguyen
 - Contact: [GitHub](https://github.com/lucashtnguyen)
 - Date: 2026-10-15
 - Status: Implemented 0.1.0 callable runtime with explicit capability limits.
@@ -40,6 +41,19 @@ material-to-Manning-n policies produce finished parameters. Depth is rim minus f
 DEPTH offsets are pipe-end invert minus node floor; ELEVATION offsets are absolute
 pipe-end inverts. Grade is upstream minus downstream pipe invert, divided by length.
 Retained geometry Z/M ordinates never silently become invert elevations.
+
+New configurations default to a reviewed floor override, then the lowest usable
+structure pipe-invert record, then the lowest local incoming/outgoing pipe end in
+the accepted model plan. Structure minima do not require a unique outgoing pipe.
+Pipe-end fallback excludes unselected/held/unwritable source pipes through a
+read-only prepare/compile convergence check. Existing floors remain preserved;
+proposed differences are reported for dependency reconciliation. See
+[structure-first floor policy](docs/floors.md).
+
+Evidence families omitted from ports.assignment.precedence are disabled. A project
+can exclude pipe_numeric to retain raw GIS endpoint attributes without using them
+for assignments, fallbacks or conflict checks.
+
 
 The SWMM adapter hands finished instructions to SHMM, which creates a preview diff
 before publication and an independent written-model diff after actual file readback.
@@ -88,6 +102,8 @@ A new run directory contains:
 - `topology.json`, `topology_components.csv`, `topology_nodes.csv` and
   `topology_connector_candidates.csv`: inherited basins, introduced islands,
   directed baseline/outfall routes and unapplied exact-ID connector evidence.
+- `floor_donor_audit.json` when applied-end fallback is enabled: accepted donor
+  identities, excluded-pipe reasons and convergence evidence.
 - `candidate_qa.json/.csv`, `review.html` and, after successful integrity checks,
   `completion.json`. An explicitly enabled engine check adds separate artifacts.
 
