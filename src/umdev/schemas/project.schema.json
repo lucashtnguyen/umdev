@@ -129,6 +129,115 @@
                 "properties": {"pipe_key": {"type": "string", "minLength": 1}, "basis": {"type": "string", "minLength": 1}}
               }
             },
+            "relative_offset_frames": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "node_key",
+                  "frame_id",
+                  "basis",
+                  "reviewer",
+                  "reference_observation_key",
+                  "node_source_sha256",
+                  "date",
+                  "observations",
+                  "endpoints"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "node_key": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "frame_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "basis": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "reviewer": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "reference_observation_key": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "node_source_sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "date": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "observations": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "observation_key",
+                        "expected_fingerprint"
+                      ],
+                      "properties": {
+                        "observation_key": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "expected_fingerprint": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{64}$"
+                        }
+                      }
+                    }
+                  },
+                  "endpoints": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "observation_key",
+                        "pipe_key",
+                        "pipe_source_sha256",
+                        "end"
+                      ],
+                      "properties": {
+                        "observation_key": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "pipe_key": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "pipe_source_sha256": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{64}$"
+                        },
+                        "end": {
+                          "enum": [
+                            "upstream",
+                            "downstream"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
             "precedence": {
               "type": "array",
               "items": {

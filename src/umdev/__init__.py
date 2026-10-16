@@ -10,7 +10,7 @@ from importlib import import_module
 from typing import Any
 
 __version__ = "0.1.0"
-__all__ = ["load_config", "ingest_sources", "prepare_network_from_dict", "prepare_project", "run_project", "infer_missing_inverts", "simplify_short_pipes", "observation_fingerprint", "propose_missing_pipe_end_offsets"]
+__all__ = ["load_config", "ingest_sources", "prepare_network_from_dict", "prepare_project", "run_project", "infer_missing_inverts", "simplify_short_pipes", "observation_fingerprint", "propose_missing_pipe_end_offsets", "relative_port_offset_plan"]
 
 _EXPORTS = {
     "load_config": ("configuration", "load_config"),
@@ -22,6 +22,7 @@ _EXPORTS = {
     "simplify_short_pipes": ("network_methods", "simplify_short_pipes"),
     "observation_fingerprint": ("observation_holds", "observation_fingerprint"),
     "propose_missing_pipe_end_offsets": ("pipe_end_offsets", "propose_missing_pipe_end_offsets"),
+    "relative_port_offset_plan": ("relative_port_offsets", "relative_port_offset_plan"),
 }
 
 

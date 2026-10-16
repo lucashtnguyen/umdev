@@ -19,6 +19,7 @@ from typing import Any, Mapping
 
 from .units import LENGTH_FACTORS
 from .observation_holds import validate_observation_holds
+from .relative_port_offsets import validate_relative_offset_frames
 
 
 class ConfigurationError(ValueError):
@@ -252,9 +253,10 @@ def _validate_policies(data: dict[str, Any]) -> None:
             if obs.get("role") not in {"in", "out", "inlet", "outlet"}:
                 raise ConfigurationError("Inline port role must be in/out")
     assignment = data.get("ports", {}).get("assignment", {})
-    _keys(assignment, set("precedence direction unique_role_diameter_fallback competing_candidates numeric_text_conflict endpoint_tolerance diameter_tolerance direction_half_sector_deg elevation_conflict_tolerance context_exclude_statuses pipe_numeric_datum observation_pipe_references observation_holds".split()), "ports.assignment")
+    _keys(assignment, set("precedence direction unique_role_diameter_fallback competing_candidates numeric_text_conflict endpoint_tolerance diameter_tolerance direction_half_sector_deg elevation_conflict_tolerance context_exclude_statuses pipe_numeric_datum observation_pipe_references observation_holds relative_offset_frames".split()), "ports.assignment")
     try:
         validate_observation_holds(assignment.get("observation_holds", {}))
+        validate_relative_offset_frames(assignment.get("relative_offset_frames", []))
     except ValueError as exc:
         raise ConfigurationError(str(exc)) from exc
     if "observation_pipe_references" in assignment:

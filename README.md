@@ -46,6 +46,54 @@ multiple scalar measurements and contradictory IN/OUT qualifiers remain held.
 The original strict parser is unchanged. Review all new syntax/role decisions,
 datum assumptions and drop profiles before applying prepared values.
 
+### Reviewed relative pipe-end observations
+
+`relative_port_offset_plan(canonical, config)` preserves reviewed differences
+between pipe ends at one structure when their common local vertical frame is
+known but their absolute datum is not. It returns SI offsets and complete
+evidence only. It never assigns a node floor, absolute pipe end, rim, datum
+transformation or hydraulic connection. Existing absolute evidence remains held
+under its original rules. No source or model record is modified.
+
+Opt in through `ports.assignment.relative_offset_frames`, an empty list by
+default. Each frame requires `id`, `node_key`, `node_source_sha256`, `frame_id`,
+`basis`, `reviewer`, ISO `date`, `reference_observation_key`, `observations` and
+`endpoints`. The review explicitly asserts one compatible local vertical frame.
+Each observation contains its exact `observation_key` and
+`expected_fingerprint` from public `observation_fingerprint`. Each endpoint
+contains `observation_key`, `pipe_key`, `pipe_source_sha256` and `end`
+(`upstream` or `downstream`). Its observation must appear in the reviewed set.
+Real source keys, hashes and engineering decisions belong in private config.
+
+The reference must be the lowest of the reviewed compatible observations,
+including incoming ports; it can be an unmodeled port. The equation is
+`relative_offset = local_reading - lowest_reviewed_local_reading`, in metres.
+A common additive datum shift cancels. An outgoing port above an incoming port
+therefore retains a positive outgoing offset and its negative local in/out
+relation. It is never flattened or replaced by an arbitrary outlet minimum.
+The result marks nonzero local differences for explicit-drop/short-merge
+protection. Unreviewed local observations remain listed for further QA.
+
+Exact node/pipe hashes, complete parsed-observation fingerprints, source pipe
+references, endpoint node/role and finite positive pipe diameters are checked.
++Available observation diameters must match the pipe diameter. Stale or
+conflicting review bindings fail closed. Invalid/held observations, mixed or
+incompatible datum labels and diameter conflicts hold the entire frame, with
+no partial offset assignments. Qualified DROP points need explicit distinct
+endpoint attribution; duplicate target ends are rejected rather than selected
+by magnitude. Pressure/gravity observations can share vertical information only
+through explicit local-frame review; this does not join hydraulic compartments.
+
+Invoke this helper explicitly in a preparation adapter before missing-elevation
+inference and short-pipe review. Convert its SI offsets once to the model's
+length units, preserve known absolute model ends, and withhold any conflicting
+frame. Apply a later independently inferred floor plus the relative offset to
+obtain a modeled end, retaining both the floor assumption and relative evidence.
+Generic inference intentionally protects explicit drops; it must not interpolate
+through a drop as if every local offset were zero. Rims and local cover/depth
+are not included in this initial helper; unknown absolute rim data remain QA.
+SHMM alone writes models and checks preview/written changes.
+
 ### Individually reviewed missing pipe-end offsets
 
 `propose_missing_pipe_end_offsets` prepares a provisional high-side inlet offset
