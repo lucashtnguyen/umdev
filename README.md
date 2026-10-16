@@ -46,6 +46,39 @@ multiple scalar measurements and contradictory IN/OUT qualifiers remain held.
 The original strict parser is unchanged. Review all new syntax/role decisions,
 datum assumptions and drop profiles before applying prepared values.
 
+### Reviewed observation holds
+
+A suspect source observation can be excluded without rewriting its raw text or
+parsed value. This is an opt-in, exact-record review decision, not a general
+outlier correction. Configure `ports.assignment.observation_holds` as a mapping
+from the exact collected observation key to `expected_fingerprint`, `reason`,
+`reviewer` and ISO `date`. An empty or omitted mapping leaves selection unchanged.
+Keep real utility decisions and their configuration outside this public repo.
+
+Collect observations with the hold configuration omitted, then call public
+`observation_fingerprint(port)` on the reviewed record. Its canonical SHA256 binds
+the entire collected observation, including original raw text, parsed values,
+parser/unit/datum metadata, configured attribution and immutable source-record
+SHA256. Inline observations now expose their source key, field and source-row
+hash. Normalized port rows already carry their source-row hash. Manually built
+observations require that explicit source binding before they can be held.
+
+A matching review adds `reviewed_observation_hold` and separate `_reviewed_hold`
+evidence to a copied observation. Raw text and numeric values remain unchanged.
+Held observations are excluded from both pipe-end resolution and lowest-structure-
+invert floor selection. A `reviewed_observation_hold` finding retains the full
+record and reason for manual QA. Other eligible measurements can still govern;
+no replacement elevation is invented. Floors preserved from an existing model
+remain governed by their existing floor policy.
+
+Missing or duplicated observation keys, altered source rows, changed parsing or
+attribution, malformed review entries and stale fingerprints fail closed before
+preparation can publish a model. A renewed evidence review must issue a new
+fingerprint. This deliberately blocks stale decisions even when an unrelated
+field on the same source row changes. Automated tests use fictional records to
+check selection/floor protection, raw-value preservation, no input mutation,
+configuration validation and stale/missing/duplicate-source rejection.
+
 Configured floor/rim sources, individual pipe-end inverts, lengths, diameters and
 material-to-Manning-n policies produce finished parameters. Depth is rim minus floor.
 DEPTH offsets are pipe-end invert minus node floor; ELEVATION offsets are absolute

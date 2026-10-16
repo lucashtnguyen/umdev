@@ -14,6 +14,7 @@ import re
 from typing import Any, Mapping, Sequence
 
 from .records import Assignment, Network, finite_number
+from .observation_holds import apply_observation_holds
 from .units import to_metres
 
 COMPASS_DEGREES = {"N": 0.0, "NE": 45.0, "E": 90.0, "SE": 135.0,
@@ -338,10 +339,13 @@ def collect_structure_ports(network: Network, config: Mapping[str, Any]) -> list
                 continue
             units = observation["units"]
             parser = parsers[observation["parser"]]
-            ports.append(parser(text, node_id=node["asset_id"],
+            parsed = parser(text, node_id=node["asset_id"],
                 key=f"{node['key']}/{observation['id']}", role=observation["role"],
                 elevation_unit=units["elevation"], diameter_unit=units["diameter"],
-                vertical_datum=node.get("vertical_datum")))
+                vertical_datum=node.get("vertical_datum"))
+            parsed.update({"source_record_sha256": node.get("source_record_sha256"),
+                           "source_key": node["key"], "source_field": field})
+            ports.append(parsed)
     references = config.get("ports", {}).get("assignment", {}).get("observation_pipe_references", {})
     unknown_observations = set(references) - {port["key"] for port in ports}
     if unknown_observations:
@@ -363,7 +367,8 @@ def collect_structure_ports(network: Network, config: Mapping[str, Any]) -> list
         else:
             port["pipe_key"] = reference["pipe_key"]
         port["configured_pipe_reference"] = dict(reference)
-    return sorted(ports, key=lambda row: row["key"])
+    holds = config.get("ports", {}).get("assignment", {}).get("observation_holds", {})
+    return sorted(apply_observation_holds(ports, holds), key=lambda row: row["key"])
 
 
 def resolve_ports(network: Network, config: Mapping[str, Any]) -> tuple[dict[tuple[str, str], Assignment], list[dict[str, Any]]]:
@@ -420,6 +425,11 @@ def resolve_ports(network: Network, config: Mapping[str, Any]) -> tuple[dict[tup
     ports = collect_structure_ports(network, config)
     for port in sorted(ports, key=lambda row: row["key"]):
         node_id = str(port.get("structure_id", port.get("node_id", "")))
+        if "reviewed_observation_hold" in port.get("flags", []):
+            findings.append({"rule": "reviewed_observation_hold", "object_key": port["key"],
+                             "node_id": node_id, "severity": "warning", "disposition": "hold",
+                             "raw": port, "review": port["_reviewed_hold"]})
+            continue
         role = {"inlet": "in", "outlet": "out"}.get(port.get("role"), port.get("role"))
         related = [end for end in incidents.get(node_id, []) if end["role"] == role]
         direct = port.get("pipe_id") or port.get("pipe_key")

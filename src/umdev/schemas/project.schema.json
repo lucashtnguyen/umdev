@@ -89,6 +89,37 @@
         "assignment": {
           "type": "object",
           "properties": {
+            "observation_holds": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "expected_fingerprint",
+                  "reason",
+                  "reviewer",
+                  "date"
+                ],
+                "properties": {
+                  "expected_fingerprint": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "reviewer": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "date": {
+                    "type": "string",
+                    "format": "date"
+                  }
+                }
+              }
+            },
             "observation_pipe_references": {
               "type": "object",
               "additionalProperties": {
