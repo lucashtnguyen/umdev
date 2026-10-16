@@ -3,7 +3,7 @@
 - Author: Lucas HT Nguyen
 - Last modified by: Lucas HT Nguyen
 - Contact: [GitHub](https://github.com/lucashtnguyen)
-- Date: 2026-10-15
+- Date: 2026-10-16
 - Status: Implemented 0.1.0 callable runtime with explicit capability limits.
 
 ## Summary
@@ -80,6 +80,26 @@ baseline objects for further orchestration. Membership `applied` and handoff
 `applied_source_keys` retain their compiler vocabulary: during preparation they
 mean accepted into the planned instructions, not written or hydraulically accepted.
 Only `run_project` performs preview, writing and independent readback verification.
+
+### Finished-network elevation inference and reviewed short pipes
+
+Opt-in `infer_missing_inverts` and `simplify_short_pipes` callables prepare a
+finished, accepted network before SHMM writes it. Interpolation uses cumulative
+hydraulic lengths between original known anchors; extrapolation requires an
+explicit positive slope and is flagged. Known floors remain unchanged. Ambiguous
+branches, adverse anchors, pumps, protected structures and explicit drops are held.
+
+Short gravity reaches can remain explicit, be selectively considered, or be
+considered below a configured length threshold. A 20-ft policy is `20` for feet
+inputs or `6.096` for metre inputs. Pumps, controls, inflows, branches, drops,
+pressure mains and section/material changes are protected. Every merge is proposed
+for review; only evidence-bound individual approvals change the returned network.
+Total hydraulic length, outer inverts/offsets, source IDs, removed-node snapshots
+and model-note text remain in the returned audit. The caller carries that audit
+to its private decision ledger, QA export and SHMM comments/diffs.
+
+These helpers do not run automatically in the existing project pipeline and write
+no model files. See [input schema, methods and limitations](docs/network_methods.md).
 
 ### Outputs and manual QA
 

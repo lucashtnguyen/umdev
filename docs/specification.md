@@ -3,7 +3,7 @@
 - Author: Lucas HT Nguyen
 - Last modified by: Lucas HT Nguyen
 - Contact: [GitHub](https://github.com/lucashtnguyen)
-- Date: 2026-10-15
+- Date: 2026-10-16
 
 Status: Implementation specification v0.2. Manually maintained.
 The 0.1.0 runtime subset below is implemented. Broader requirements and roadmap
@@ -611,3 +611,35 @@ separate QA dispositions but supply no model instructions or applied-end donors.
 Existing baseline assets and loads are preserved. Scope and held-data counts,
 audit registers, frozen policy hashes and previous-candidate differences remain
 separate from SHMM preview/written integrity checks.
+
+
+## Opt-in finished-network inference and simplification
+
+Implemented by the public `infer_missing_inverts` and `simplify_short_pipes`
+callables; these are explicitly invoked finished-network methods, separate from
+source evidence precedence and the default project pipeline.
+
+- Infer only missing gravity-chain floors using cumulative hydraulic lengths,
+  original known pipe-end anchors and a common caller-supplied unit/datum.
+- Preserve measured/reviewed known floors; stop at branches, unknown pressure
+  families, pumps, protected structures, drops or conflicting known grades.
+- Permit one-anchor dead-end extrapolation only with an explicit positive slope;
+  retain provisional method flags, source paths, distances and anchor snapshots.
+- Support explicit-all, selective and eligible-short-pipe modes with a configurable
+  threshold, explicit keep lists and protected node IDs. A 20-ft threshold means
+  6.096 m for SI input; never apply an implicit native-unit conversion.
+- Propose deterministic disjoint serial gravity merges; protect loading/controls,
+  branch nodes, boundaries, stations, pressure mains, meaningful offsets/drops,
+  section/material/friction changes and unknown/nonmonotone profiles.
+- Require an evidence-fingerprinted individual approval ID for each applied merge.
+  Preserve total hydraulic length, outer offsets/inverts, ordered source IDs,
+  removed-node/source snapshots, geometry and a printable model-note intent.
+- Return all assignments, unresolved cases, merge candidates and withheld reasons
+  to the private orchestrator. SHMM owns file modifications, comments, both model
+  diffs and GIS/QA export; it must not silently reconstruct missing engineering
+  decisions from the simplified network.
+
+The [method contract](network_methods.md) specifies schemas, equations,
+regression checks, limits and manual review requirements. No automatic island
+connection, station replacement, pressure-profile inference or calibrated-model
+claim is implied by these numerical helpers.
