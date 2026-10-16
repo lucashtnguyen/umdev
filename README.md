@@ -46,6 +46,41 @@ multiple scalar measurements and contradictory IN/OUT qualifiers remain held.
 The original strict parser is unchanged. Review all new syntax/role decisions,
 datum assumptions and drop profiles before applying prepared values.
 
+### Individually reviewed missing pipe-end offsets
+
+`propose_missing_pipe_end_offsets` prepares a provisional high-side inlet offset
+only for explicitly selected adverse gravity pipes whose upstream pipe end has
+no observed/reviewed elevation. It preserves every node floor, known pipe end,
+existing downstream offset, diameter and length. A known upstream end, explicit
+drop, protected link, pressure pipe or existing nonzero inlet offset is held.
+An observed downstream end must agree with its native floor+offset.
+
+The configured positive slope gives `upstream = fixed_downstream + slope * length`
+and `inlet_offset = upstream - upstream_node_floor`, using one caller-declared
+length unit and datum. With both ports missing, the downstream anchor is the
+unchanged node floor+offset and remains an explicit assumption. This is an
+engineering proposal, not recovery of a surveyed invert. It does not resolve
+source diameter/association conflicts or demonstrate hydraulic suitability.
+
+The new upstream crown always requires a known rim and must fit below it. The
+unchanged downstream crown is also checked wherever its rim is known. Missing
+downstream rims default to a hold; the narrow explicit
+`allow_unknown_downstream_rim` option permits a flagged proposal without claiming
+verified clearance. Upstream placeholder rims are never acceptable known rims.
+The caller must supply only real rim evidence to the helper.
+
+No returned link changes on the first proposal pass. Each proposal ID binds its
+complete source node/link records, selected pipe set, slope, units, rim policy,
+tolerance and optional whole-project `configuration_sha256`. Pass individually
+reviewed IDs through `approved_proposal_ids` to obtain copied link edits and
+full assumption lineage for SHMM QA/model notes. Unknown or stale IDs fail
+closed. SHMM remains responsible for all model writing and written-profile QA.
+
+Twenty synthetic tests check independent arithmetic, preserved anchors, review
+and source/config guards, missing/known rim constraints, pressure/drop protection,
+invalid slopes and nonfinite results. These proposals require project-specific
+human approval; no universal automatic grade correction is enabled.
+
 ### Reviewed observation holds
 
 A suspect source observation can be excluded without rewriting its raw text or
