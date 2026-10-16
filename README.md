@@ -372,6 +372,17 @@ and [SHMM handoff](docs/handoff.md). The [minimal project](examples/minimal/proj
 is executable. The broader [design example](examples/config/utility_project.example.json)
 includes future native GIS capabilities and is not a current-driver demonstration.
 
+### Provisional pump head-flow preparation
+
+Pure SI helpers `hazen_williams_full_pipe_headloss` and
+`provisional_pump3_points` prepare explicit synthetic PUMP3 points without editing
+source curves or writing models. Nominal rate, receiving head, wetwell level,
+shared-trunk simultaneous flow and positive duty margin require caller policy.
+The native axes are head then flow. Shape factors, downhill-head behavior and
+full-pipe friction assumptions are reported; manufacturer performance and
+pressure/transient adequacy remain unverified. See the
+[calculation, units and review guide](docs/pump_curve_preparation.md).
+
 ## Developer README
 
 Use Python 3.12 or newer with hymo >=0.2.1, SHMM >=0.1.2 and pyproj >=3.6,<4.
