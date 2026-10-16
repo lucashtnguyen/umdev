@@ -34,7 +34,17 @@ The configured observation units supply an omitted suffix; stated units must agr
 For example, an elevation followed by `(SE), 12` can use the configured diameter
 unit, while a bare pair of numbers remains ambiguous and `12'` is not an accepted
 diameter suffix. Original source text and parsing/unit provenance remain traceable.
-Qualified, capped/drop or multiple-port text still requires supported interpretation.
+The opt-in `qualified_elevation_direction_diameter_v1` parser additionally accepts
+standalone trailing `OUT`, `IN` and `DROP` tokens. It preserves the exact raw text
+and qualifier spans; explicit IN/OUT takes precedence over the configured field
+role. DROP remains physical qualification metadata, not permission to choose the
+lower of two pipe-end observations. Conflicting same-end drop measurements stay
+held unless an explicit observation-to-pipe reference or reviewed endpoint value
+governs the assignment. `ports.assignment.observation_pipe_references` maps an
+exact collected observation key to `{pipe_key, basis}`. Invalid remarks, caps,
+multiple scalar measurements and contradictory IN/OUT qualifiers remain held.
+The original strict parser is unchanged. Review all new syntax/role decisions,
+datum assumptions and drop profiles before applying prepared values.
 
 Configured floor/rim sources, individual pipe-end inverts, lengths, diameters and
 material-to-Manning-n policies produce finished parameters. Depth is rim minus floor.

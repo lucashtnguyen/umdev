@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lucashtnguyen/umdev/schemas/project.schema.json",
   "title": "umdev schema version 1 supported project configuration",
-  "description": "Author Lucas HT Nguyen; contact https://github.com/lucashtnguyen; date 2026-10-15. Structural contract; Python semantic validation additionally checks engineering policies, references, units and driver capabilities.",
+  "description": "Author Lucas HT Nguyen; contact https://github.com/lucashtnguyen; date 2026-10-16. Structural contract; Python semantic validation additionally checks engineering policies, references, units and driver capabilities.",
   "type": "object",
   "required": [
     "schema_version",
@@ -70,9 +70,34 @@
     "ports": {
       "type": "object",
       "properties": {
+        "observations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "dataset", "parser"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"type": "string"},
+              "dataset": {"type": "string"},
+              "parser": {"enum": ["normalized_port_row_v1", "elevation_direction_diameter_v1", "qualified_elevation_direction_diameter_v1"]},
+              "field": {"type": "string"},
+              "role": {"enum": ["in", "out", "inlet", "outlet"]},
+              "units": {"type": "object", "properties": {"elevation": {"type": "string"}, "diameter": {"type": "string"}}, "additionalProperties": false}
+            }
+          }
+        },
         "assignment": {
           "type": "object",
           "properties": {
+            "observation_pipe_references": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "required": ["pipe_key", "basis"],
+                "additionalProperties": false,
+                "properties": {"pipe_key": {"type": "string", "minLength": 1}, "basis": {"type": "string", "minLength": 1}}
+              }
+            },
             "precedence": {
               "type": "array",
               "items": {

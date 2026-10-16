@@ -3,7 +3,7 @@
 Author: Lucas HT Nguyen
 Last modified by: Lucas HT Nguyen
 Contact: https://github.com/lucashtnguyen
-Date: 2026-10-15
+Date: 2026-10-16
 Manually maintained; configuration cannot execute code or arbitrary SQL.
 """
 
@@ -42,7 +42,8 @@ TOP_KEYS = set("schema_version kind metadata extends sources datasets units mode
 FIELDS = set("asset_id from_node to_node model_id diameter length upstream_invert downstream_invert material status pipe_kind floor rim vertical_datum outlet_description inlet_description port_id structure_id pipe_id role invert direction review_priority existing_selection future_selection decision description roughness".split())
 PATH_KEYS = {"path", "baseline", "crosswalk_path", "overrides_path", "ledger_path", "output_directory", "executable", "version_library", "changes_path"}
 FORMAT_IDS = {"json_packet", "json", "csv", "geojson", "geopackage", "file_geodatabase"}
-PARSERS = {"normalized_port_row_v1", "elevation_direction_diameter_v1"}
+INLINE_PARSERS = {"elevation_direction_diameter_v1", "qualified_elevation_direction_diameter_v1"}
+PARSERS = {"normalized_port_row_v1"} | INLINE_PARSERS
 
 
 def _keys(value: object, allowed: set[str], context: str) -> dict[str, Any]:
@@ -123,7 +124,7 @@ def _validate_config(config: Mapping[str, Any]) -> None:
         observations = data.get("ports", {}).get("observations", [])
         observation_fields = {item.get("field") for item in observations
                               if isinstance(item, dict) and item.get("dataset") == name
-                              and item.get("parser") == "elevation_direction_diameter_v1"
+                              and item.get("parser") in INLINE_PARSERS
                               and isinstance(item.get("field"), str)}
         if any(not field.isascii() or not field.isidentifier() for field in observation_fields):
             raise ConfigurationError(f"Observation canonical fields must be identifier strings in {name}")
@@ -238,10 +239,10 @@ def _validate_policies(data: dict[str, Any]) -> None:
         seen.add(obs["id"])
         if obs.get("dataset") not in data.get("datasets", {}) or obs.get("parser") not in PARSERS:
             raise ConfigurationError("Unknown port parser or dataset reference")
-        expected_entity = "node" if obs["parser"] == "elevation_direction_diameter_v1" else "port"
+        expected_entity = "node" if obs["parser"] in INLINE_PARSERS else "port"
         if data["datasets"][obs["dataset"]]["entity"] != expected_entity:
             raise ConfigurationError("Port parser is incompatible with referenced dataset entity")
-        if obs["parser"] == "elevation_direction_diameter_v1":
+        if obs["parser"] in INLINE_PARSERS:
             if obs.get("field") not in data["datasets"][obs["dataset"]]["fields"]:
                 raise ConfigurationError("Inline port field is not mapped")
             _keys(obs.get("units", {}), {"elevation", "diameter"}, "port units")
@@ -250,7 +251,17 @@ def _validate_policies(data: dict[str, Any]) -> None:
             if obs.get("role") not in {"in", "out", "inlet", "outlet"}:
                 raise ConfigurationError("Inline port role must be in/out")
     assignment = data.get("ports", {}).get("assignment", {})
-    _keys(assignment, set("precedence direction unique_role_diameter_fallback competing_candidates numeric_text_conflict endpoint_tolerance diameter_tolerance direction_half_sector_deg elevation_conflict_tolerance context_exclude_statuses pipe_numeric_datum".split()), "ports.assignment")
+    _keys(assignment, set("precedence direction unique_role_diameter_fallback competing_candidates numeric_text_conflict endpoint_tolerance diameter_tolerance direction_half_sector_deg elevation_conflict_tolerance context_exclude_statuses pipe_numeric_datum observation_pipe_references".split()), "ports.assignment")
+    if "observation_pipe_references" in assignment:
+        references = assignment["observation_pipe_references"]
+        if not isinstance(references, dict):
+            raise ConfigurationError("observation_pipe_references must be an object")
+        for observation_key, reference in references.items():
+            if not isinstance(observation_key, str) or not observation_key.strip():
+                raise ConfigurationError("Explicit pipe reference keys must identify collected observations")
+            reference = _keys(reference, {"pipe_key", "basis"}, "observation_pipe_references")
+            if any(not isinstance(reference.get(key), str) or not reference[key].strip() for key in ("pipe_key", "basis")):
+                raise ConfigurationError("Explicit observation pipe references require pipe_key and basis")
     for key in ("endpoint_tolerance", "diameter_tolerance", "elevation_conflict_tolerance"):
         if key in assignment:
             _quantity(assignment[key], "ports.assignment." + key)

@@ -3,7 +3,7 @@
 - Author: Lucas HT Nguyen
 - Last modified by: Lucas HT Nguyen
 - Contact: [GitHub](https://github.com/lucashtnguyen)
-- Date: 2026-10-15
+- Date: 2026-10-16
 
 Status: Version-1 configuration contract with an implemented umdev 0.1.0 subset.
 `load_config` and `src/umdev/schemas/project.schema.json` now exist. Runtime
@@ -24,7 +24,7 @@ The broader GeoPackage design example below is not a current-driver demonstratio
 | Overlays | Ordered `extends`, recursive dictionaries, atomic lists/nulls, declaration-relative resource paths and cycle detection |
 | Units/CRS | Canonical SI metre values; declared source units; pyproj projected CRS/axis/unit checks; no reprojection |
 | Identity | Explicit endpoint fields, asset/model IDs and optional JSON crosswalk; no spatial candidate matching |
-| Port parsers | `normalized_port_row_v1` and `elevation_direction_diameter_v1` with configured fields/roles/units |
+| Port parsers | `normalized_port_row_v1`, strict `elevation_direction_diameter_v1` and opt-in `qualified_elevation_direction_diameter_v1` with configured fields/roles/units |
 | Direction | `hint` permits configured unique role/diameter provisional fallback; `strict` withholds mismatching/unverified declared directions |
 | Datum | `identity` or signed `constant_offset` with basis, verification, precedence and optional `asset_ids`/`source_keys` |
 | Floors | New default: `reviewed_override`, `lowest_structure_port`, `lowest_applied_pipe_end`; explicit legacy methods remain supported |
@@ -111,11 +111,16 @@ coordinates. M/Z, curves, multipart handling and supported conversions are expli
 
 ### Port observations and evidence precedence
 
-The runtime implements two registered parser IDs:
+The runtime implements three registered parser IDs:
 
 - `normalized_port_row_v1` consumes canonical port-table fields.
 - `elevation_direction_diameter_v1` parses a described elevation, compass direction
   and diameter; the observation mapping supplies role and units.
+- `qualified_elevation_direction_diameter_v1` adds opt-in recognition of standalone
+  trailing OUT, IN and DROP tokens, preserving the original scalar grammar and
+  units. It records qualifier spans, raw text and configured/effective role.
+  Explicit OUT/IN controls the role even in a field normally mapped to inlet.
+  DROP is retained as `explicit_drop=true`; it does not select a pipe endpoint.
 
 New field names and additional observation mappings require config changes only.
 A new language or complex grammar can require a registered parser extension.
@@ -139,9 +144,30 @@ Retain the original source attribute and raw description, parsed numeric values,
 configured/stated units and the parsing/default-unit rule used. Those observations
 continue through normal datum normalization, evidence ranking and port assignment;
 syntax acceptance alone does not establish the correct pipe end or surveyed basis.
-Multiple measurements, cap/drop/stub qualifiers, unsupported unit suffixes and
+For the original strict parser, multiple measurements, cap/drop/stub qualifiers, unsupported unit suffixes and
 competing assignments remain unresolved or explicitly held rather than having
 qualifiers stripped away.
+
+The qualified parser removes only recognized standalone suffixes. Unknown prose,
+CAPPED/ABANDONED/STUB remarks, multiple scalar measurements, duplicate qualifiers
+and contradictory IN/OUT tokens still produce held observations. A recognized
+suffix does not make otherwise invalid scalar text usable. Two conflicting port
+values involving DROP for one pipe end remain held as `ambiguous_drop_port`, even
+if compass fallback ranks one higher. Numeric minimum is never an endpoint rule.
+A single unambiguous DROP observation may be assigned normally and remains
+visible as physical qualification metadata; source-floor policies can still use
+known low structure measurements without using them as an ambiguous pipe end.
+
+For reviewed disambiguation, `ports.assignment.observation_pipe_references` is a
+mapping from an exact collected observation key to an object with `pipe_key`
+(the canonical source-qualified pipe key) and nonempty `basis`. The reference is
+retained on the raw observation and uses the existing explicit-reference rank.
+No fuzzy asset matching or role bypass occurs; the named pipe must be incident
+with the compatible role. Conflicting existing pipe references remain held.
+Canonical normalized ports may also carry their existing direct `pipe_id` or
+`pipe_key`; reviewed endpoint overrides remain the strongest explicit evidence.
+Two contradictory explicitly mapped observations still conflict rather than
+selecting the lower. Keep project bindings and review rationale in private config.
 
 The `ports.assignment.precedence` list enables and orders evidence families.
 An omitted family is disabled, including fallback and contradiction checks.

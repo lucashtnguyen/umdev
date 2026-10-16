@@ -3,7 +3,7 @@
 Author: Lucas HT Nguyen
 Last modified by: Lucas HT Nguyen
 Contact: https://github.com/lucashtnguyen
-Date: 2026-10-15
+Date: 2026-10-16
 Manually maintained. Canonical numeric elevations/diameters use metres.
 """
 from __future__ import annotations
@@ -103,6 +103,74 @@ def parse_inline_port(text: Any, *, node_id: str, key: str, role: str,
         if record["diameter"] <= 0:
             record["flags"] = ["invalid_port_diameter"]
     record["direction"] = match["direction"].upper() if match["direction"] else None
+    return record
+
+
+def parse_qualified_inline_port(text: Any, *, node_id: str, key: str, role: str,
+                                elevation_unit: str, diameter_unit: str,
+                                vertical_datum: str | None = None) -> dict[str, Any]:
+    """Parse a scalar port with explicitly recognized trailing role/drop tokens.
+
+    Parameters
+    ----------
+    text : object
+        Strict elevation/direction/diameter notation, optionally followed by
+        whitespace-separated OUT, IN and/or DROP tokens, case insensitive.
+    node_id, key, role : str
+        Structure and source observation identities and configured default role.
+        A single explicit IN/OUT qualifier overrides that default role.
+    elevation_unit, diameter_unit : str
+        Declared source units, checked by the unchanged strict scalar parser.
+    vertical_datum : str, optional
+        Declared source datum, never inferred from a qualifier.
+
+    Returns
+    -------
+    dict
+        Strict parsed values with original raw text, qualifier spans, explicit
+        drop metadata and configured/effective role provenance. Unknown remarks,
+        duplicate qualifiers and contradictory IN/OUT tokens remain flagged.
+
+    Notes
+    -----
+    DROP identifies a physical qualification, not which side of the drop a
+    measured scalar represents. Conflicting same-end drop observations must
+    remain unresolved without an explicit source-to-pipe reference or reviewed
+    endpoint value. Numeric magnitude never decides endpoint attribution.
+    The original elevation_direction_diameter_v1 contract is unchanged.
+    """
+    raw = "" if text is None else str(text)
+    remaining = raw
+    suffixes: list[dict[str, Any]] = []
+    suffix_pattern = re.compile(r"\s+(?P<qualifier>OUT|IN|DROP)\s*$", re.I)
+    while match := suffix_pattern.search(remaining):
+        suffixes.append({"token": match["qualifier"].upper(), "raw": match["qualifier"],
+                         "start": match.start("qualifier"), "end": match.end("qualifier")})
+        remaining = remaining[:match.start()]
+    suffixes.reverse()
+    record = parse_inline_port(remaining, node_id=node_id, key=key, role=role,
+                               elevation_unit=elevation_unit, diameter_unit=diameter_unit,
+                               vertical_datum=vertical_datum)
+    record["raw"] = raw
+    qualifiers = [item["token"] for item in suffixes]
+    record["qualifiers"] = qualifiers
+    record["explicit_drop"] = "DROP" in qualifiers
+    parsing = record.setdefault("parsing", {"elevation_unit": elevation_unit,
+                                            "diameter_unit": diameter_unit, "normalizations": []})
+    parsing.update(grammar_id="qualified_elevation_direction_diameter_v1",
+                   qualifier_evidence=suffixes, scalar_text=remaining,
+                   configured_role=role, role_basis="configured")
+    explicit_roles = {"in" if item == "IN" else "out" for item in qualifiers if item in {"IN", "OUT"}}
+    if len(explicit_roles) == 1:
+        record["role"] = next(iter(explicit_roles))
+        parsing["role_basis"] = "explicit_suffix"
+    if suffixes:
+        parsing["normalizations"].append("recognized_trailing_port_qualifiers")
+    if len(explicit_roles) > 1:
+        record["flags"].append("conflicting_port_role_qualifiers")
+    if len(qualifiers) != len(set(qualifiers)):
+        record["flags"].append("duplicate_port_qualifier")
+    parsing["effective_role"] = record["role"]
     return record
 
 
@@ -256,7 +324,9 @@ def collect_structure_ports(network: Network, config: Mapping[str, Any]) -> list
     for observation in config.get("ports", {}).get("observations", []):
         if observation.get("parser") == "normalized_port_row_v1":
             continue
-        if observation.get("parser") != "elevation_direction_diameter_v1":
+        parsers = {"elevation_direction_diameter_v1": parse_inline_port,
+                   "qualified_elevation_direction_diameter_v1": parse_qualified_inline_port}
+        if observation.get("parser") not in parsers:
             raise ValueError(f"Unsupported port parser: {observation.get('parser')!r}")
         selected_nodes = node_datasets.get(observation.get("dataset", ""), [])
         for node in selected_nodes:
@@ -267,10 +337,32 @@ def collect_structure_ports(network: Network, config: Mapping[str, Any]) -> list
             if text in (None, ""):
                 continue
             units = observation["units"]
-            ports.append(parse_inline_port(text, node_id=node["asset_id"],
+            parser = parsers[observation["parser"]]
+            ports.append(parser(text, node_id=node["asset_id"],
                 key=f"{node['key']}/{observation['id']}", role=observation["role"],
                 elevation_unit=units["elevation"], diameter_unit=units["diameter"],
                 vertical_datum=node.get("vertical_datum")))
+    references = config.get("ports", {}).get("assignment", {}).get("observation_pipe_references", {})
+    unknown_observations = set(references) - {port["key"] for port in ports}
+    if unknown_observations:
+        raise ValueError(f"Explicit pipe references name missing observations: {sorted(unknown_observations)}")
+    for port in ports:
+        reference = references.get(port["key"])
+        if reference is None:
+            continue
+        if (not isinstance(reference, Mapping) or not isinstance(reference.get("pipe_key"), str)
+                or not reference["pipe_key"].strip() or not isinstance(reference.get("basis"), str)
+                or not reference["basis"].strip()):
+            raise ValueError("Explicit observation pipe references require pipe_key and basis")
+        existing_references = [port[name] for name in ("pipe_key", "pipe_id") if port.get(name)]
+        pipe = next((item for item in network.pipes if item["key"] == reference["pipe_key"]), None)
+        if pipe is None:
+            port.setdefault("flags", []).append("unknown_port_pipe_reference")
+        elif any(existing not in {pipe["key"], pipe["asset_id"]} for existing in existing_references):
+            port.setdefault("flags", []).append("port_pipe_reference_conflict")
+        else:
+            port["pipe_key"] = reference["pipe_key"]
+        port["configured_pipe_reference"] = dict(reference)
     return sorted(ports, key=lambda row: row["key"])
 
 
@@ -398,7 +490,26 @@ def resolve_ports(network: Network, config: Mapping[str, Any]) -> tuple[dict[tup
             if field in pipe.get("_reviewed_override_holds", []):
                 assignments[(pipe["key"], end)] = Assignment(None, "unresolved", "stale_override_hold", flags=("stale_reviewed_override",))
                 continue
-            assignments[(pipe["key"], end)] = choose_assignment(candidates[(pipe["key"], end)],
+            endpoint_candidates = candidates[(pipe["key"], end)]
+            enabled_ports = [item for item in endpoint_candidates if item.get("family") in precedence
+                             and item.get("family") in {"inline_port", "normalized_port"}]
+            explicit_resolution = any(item.get("method") == "explicit_pipe_reference" for item in enabled_ports)
+            explicit_resolution |= any(item.get("family") == "reviewed_override" for item in endpoint_candidates
+                                       if "reviewed_override" in precedence)
+            drop_observations = [item for item in enabled_ports if item.get("raw", {}).get("explicit_drop")]
+            conflicting_ports = (len(enabled_ports) > 1 and
+                                 max(item["value"] for item in enabled_ports) - min(item["value"] for item in enabled_ports) > elevation_tolerance)
+            if drop_observations and conflicting_ports and not explicit_resolution:
+                # Top/bottom observations of a drop can share role, diameter
+                # and azimuth. Neither their minimum nor a stronger tangent
+                # match establishes which elevation belongs to this pipe end.
+                assignments[(pipe["key"], end)] = Assignment(None, "unresolved", "ambiguous_drop_port",
+                    alternatives=tuple(endpoint_candidates), flags=("ambiguous_drop_port",))
+                findings.append({"rule": "ambiguous_drop_port", "object_key": pipe["key"], "end": end,
+                                 "severity": "warning", "disposition": "hold",
+                                 "observation_keys": [item["source_key"] for item in enabled_ports]})
+                continue
+            assignments[(pipe["key"], end)] = choose_assignment(endpoint_candidates,
                 precedence=precedence, tolerance=elevation_tolerance,
                 conflict_policy=policy.get("numeric_text_conflict", "prefer_ranked_with_flag"))
     return assignments, findings
