@@ -206,6 +206,68 @@ def _short_seed_review(links: Mapping[str,Mapping[str,Any]], ids: set[str], *,
         'limitations':'This controls model scope only. Unknown real tributary loads, source roles and future allocation still require project review; no source lifecycle or physical pipe is changed.'}
 
 
+
+def _all_small_policy(value: Any) -> dict[str,Any]|None:
+    """Validate an explicit opt-in all-small branch policy in SI metres."""
+    numeric={'maximum_diameter_m','diameter_tolerance_m'}
+    if not isinstance(value,Mapping) or set(value)-({'enabled'}|numeric) or not isinstance(value.get('enabled'),bool):
+        raise ValueError('all_small_peripheral_branches requires an explicit enabled Boolean and known keys')
+    if value['enabled'] and numeric-set(value):
+        raise ValueError('Enabled all-small rule requires an explicit SI diameter and tolerance')
+    for key in numeric&set(value):
+        number=value[key]
+        if (isinstance(number,bool) or not isinstance(number,(int,float)) or not math.isfinite(number)
+                or number<0 or number==0 and key=='maximum_diameter_m'):
+            raise ValueError('Invalid all-small SI threshold: '+key)
+    if numeric<=set(value) and value['diameter_tolerance_m']>=value['maximum_diameter_m']:
+        raise ValueError('All-small tolerance must be smaller than its diameter threshold')
+    return dict(value) if value['enabled'] else None
+
+
+def _all_small_review(links: Mapping[str,Mapping[str,Any]], ids: set[str], *,
+        kind: str,attachments: set[str],interior: set[str],protected_nodes: set[str],
+        protected_links: set[str],loaded: set[str],terminals: set[str],
+        rule: Mapping[str,Any],original_reasons: list[str],input_hash: str,
+        source_graph_hash: str) -> dict[str,Any]:
+    """Review a complete small-diameter tree using actual directed receiver paths.
+
+    Notes
+    -----
+    A diameter at maximum+tolerance qualifies; larger pipes never do. Every
+    internal node must reach the sole retained attachment using only group
+    links in their declared direction. Undirected tree identity rejects loops,
+    parallel paths and reconvergence. Only ordinary count/length holds may be
+    waived; this is no claim about real tributary sewage or hydraulic capacity.
+    """
+    attachment=next(iter(attachments)) if len(attachments)==1 else None
+    routes={node:_path(links,ids,node,attachment) if attachment is not None else None
+            for node in sorted(interior)}
+    vertices={n for key in ids for n in (links[key]['from_node'],links[key]['to_node'])}
+    tree=len(_components(links,ids))==1 and len(ids)==len(vertices)-1
+    limit=rule['maximum_diameter_m']+rule['diameter_tolerance_m']
+    guards={'whole_peripheral_tree':kind=='peripheral_tree' and tree,
+        'single_retained_attachment':len(attachments)==1,
+        'no_protected_internal_nodes':not(interior&(protected_nodes|loaded|terminals)),
+        'no_protected_links':not(ids&protected_links),
+        'gravity_links_only':all(links[key]['kind']=='gravity'for key in ids),
+        'all_diameters_within_rule':all(links[key].get('diameter_m',float('inf'))<=limit for key in ids),
+        'every_internal_node_has_directed_attachment_route':bool(routes) and all(route is not None and bool(route) for route in routes.values())}
+    allowed={'whole_group_pipe_count_exceeds_scope_policy','whole_group_length_exceeds_scope_policy'}
+    non_size=[reason for reason in original_reasons if reason not in allowed]
+    failures=[key for key,value in guards.items()if not value]
+    if non_size:failures.append('non_size_scope_hold_remains')
+    eligible=not failures
+    waived=[reason for reason in original_reasons if reason in allowed] if eligible else []
+    return {'enabled':True,'eligible':eligible,'size_override_applied':bool(waived),
+        'policy':dict(rule),'rule_configuration_fingerprint':sha256(json.dumps(dict(rule),sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest(),
+        'input_fingerprint':input_hash,'source_graph_fingerprint':source_graph_hash,
+        'retained_attachment_node_id':attachment,'internal_node_directed_attachment_routes':routes,
+        'protected_guards':guards,'original_hold_reasons':list(original_reasons),
+        'overridden_hold_reasons':waived,'non_size_hold_reasons':non_size,'eligibility_failures':failures,
+        'basis':'All pipes in a complete single-attachment peripheral tree meet the explicit small-diameter threshold and every internal node drains to that attachment. Only complete-group count/length holds may be waived.',
+        'limitations':'Scope planning only; missing modeled loads do not establish zero real sewage. Source lifecycle, capacity, tributary allocation and omission approval remain separate project reviews.'}
+
+
 def plan_small_runs(nodes: Mapping[str,Mapping[str,Any]],links: Mapping[str,Mapping[str,Any]], *,
         candidate_link_ids: Iterable[str],protected_link_ids: Iterable[str],protected_node_ids: Iterable[str],
         loaded_node_ids: Iterable[str],terminal_node_ids: Iterable[str],policy: Mapping[str,Any],
@@ -236,6 +298,10 @@ def plan_small_runs(nodes: Mapping[str,Mapping[str,Any]],links: Mapping[str,Mapp
         SI tolerances. Only count/length holds on complete one-attachment trees
         can be waived; every separate seed run must be short and require a small
         downstream connector. Seed continuity ignores smaller side tributaries.
+        Optional all_small_peripheral_branches is also disabled when omitted. It
+        requires explicit maximum_diameter_m/diameter_tolerance_m, checks every
+        directed internal-node route to one retained attachment, and can waive
+        only count/length holds on complete all-small peripheral trees.
     reference_omission_ids : iterable of str
         Optional model-comparison context only; cannot override any protection.
     retired_link_ids : iterable of str
@@ -273,6 +339,7 @@ def plan_small_runs(nodes: Mapping[str,Mapping[str,Any]],links: Mapping[str,Mapp
         if isinstance(value,bool)or not isinstance(value,(int,float))or not math.isfinite(value)or value<0 or value==0 and key!='dimensional_tolerance_m':raise ValueError('Invalid SI scope threshold: '+key)
     if not isinstance(policy['allow_isolated_component_omission'],bool):raise ValueError('Explicit isolated-component Boolean required')
     short_seed_rule=_short_seed_policy(policy['short_seed_connector_branches']) if 'short_seed_connector_branches'in policy else None
+    all_small_rule=_all_small_policy(policy['all_small_peripheral_branches']) if 'all_small_peripheral_branches'in policy else None
     for key,row in links.items():
         if row.get('from_node')not in nodes or row.get('to_node')not in nodes or row['from_node']==row['to_node']:raise ValueError('Unknown/self link endpoint: '+key)
         if not isinstance(row.get('kind'),str)or not row['kind']:raise ValueError('Explicit link kind required')
@@ -291,7 +358,7 @@ def plan_small_runs(nodes: Mapping[str,Mapping[str,Any]],links: Mapping[str,Mapp
         'protected_node_ids':sorted(protected_nodes),'loaded_node_ids':sorted(loaded),'terminal_node_ids':sorted(terminals),
         'retired_link_ids':sorted(retired),'reference_omission_ids':sorted(reference),'policy':dict(policy)}
     input_hash=sha256(json.dumps(source,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
-    source_graph_hash=sha256(json.dumps({key:value for key,value in source.items()if key!='policy'},sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest() if short_seed_rule else None
+    source_graph_hash=sha256(json.dumps({key:value for key,value in source.items()if key!='policy'},sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest() if short_seed_rule or all_small_rule else None
     adjacency={n:{k for k,other in edges}for n,edges in _adjacency(links,active).items()}
     queue=deque(sorted(n for n,edges in adjacency.items()if len(edges)==1 and n not in locked));peeled=set()
     while queue:
@@ -369,12 +436,19 @@ def plan_small_runs(nodes: Mapping[str,Mapping[str,Any]],links: Mapping[str,Mapp
             if alternate is None:reasons.append('required_or_ambiguous_directed_anchor_connection')
         guard=_guard(links,active,ids,locked,terminals)
         if not guard['passed']:reasons.append('retained_network_guard_failed')
+        original_reasons=list(reasons)
         seed_review=None
+        small_review=None
         if short_seed_rule:
             seed_review=_short_seed_review(links,ids,kind=item['kind'],attachments=attachments,interior=interior,
                 protected_nodes=protected_nodes,protected_links=retained,loaded=loaded,terminals=terminals,
-                rule=short_seed_rule,original_reasons=reasons,input_hash=input_hash,source_graph_hash=source_graph_hash)
+                rule=short_seed_rule,original_reasons=original_reasons,input_hash=input_hash,source_graph_hash=source_graph_hash)
             reasons=[reason for reason in reasons if reason not in seed_review['overridden_hold_reasons']]
+        if all_small_rule:
+            small_review=_all_small_review(links,ids,kind=item['kind'],attachments=attachments,interior=interior,
+                protected_nodes=protected_nodes,protected_links=retained,loaded=loaded,terminals=terminals,
+                rule=all_small_rule,original_reasons=original_reasons,input_hash=input_hash,source_graph_hash=source_graph_hash)
+            reasons=[reason for reason in reasons if reason not in small_review['overridden_hold_reasons']]
         record={'kind':item['kind'],'link_ids':sorted(ids),'internal_node_ids':sorted(interior),'attachment_node_ids':sorted(attachments),
             'total_length_m':length,'maximum_diameter_m':diameter,'pipe_count':len(ids),
             'recommended_action':'recommend_omit'if not reasons else'hold_review','hold_reasons':reasons,
@@ -384,6 +458,7 @@ def plan_small_runs(nodes: Mapping[str,Mapping[str,Any]],links: Mapping[str,Mapp
                 'allocation_target_node_ids':sorted(attachments),'no_recorded_load_does_not_mean_zero_real_sewage':True,
                 'basis':'Caller must preserve modeled loads and separately allocate future tributary loading; no loading is transferred here.'}}
         if seed_review is not None:record['short_seed_connector_review']=seed_review
+        if small_review is not None:record['all_small_peripheral_review']=small_review
         record['proposal_id']='SCOPE-'+sha256(json.dumps({'input':input_hash,'group':record},sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()[:24]
         groups.append(record)
     recommended=set().union(*(set(g['link_ids'])for g in groups if g['recommended_action']=='recommend_omit'))if groups else set()
@@ -396,12 +471,14 @@ def plan_small_runs(nodes: Mapping[str,Mapping[str,Any]],links: Mapping[str,Mapp
         for group in groups:
             record={key:value for key,value in group.items()if key!='proposal_id'}
             group['proposal_id']='SCOPE-'+sha256(json.dumps({'input':input_hash,'group':record},sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()[:24]
-    if short_seed_rule:
+    if short_seed_rule or all_small_rule:
         for group in groups:
-            review=group['short_seed_connector_review']
-            review['joint_retained_network_guard_passed']=joint['passed']
-            review['final_recommended_action']=group['recommended_action']
-            review['final_hold_reasons']=list(group['hold_reasons'])
+            for review_key in ('short_seed_connector_review','all_small_peripheral_review'):
+                if review_key not in group:continue
+                review=group[review_key]
+                review['joint_retained_network_guard_passed']=joint['passed']
+                review['final_recommended_action']=group['recommended_action']
+                review['final_hold_reasons']=list(group['hold_reasons'])
             record={key:value for key,value in group.items()if key!='proposal_id'}
             group['proposal_id']='SCOPE-'+sha256(json.dumps({'input':input_hash,'group':record},sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()[:24]
     return {'status':'review_only_no_model_or_load_changes','input_fingerprint':input_hash,'policy':dict(policy),'groups':groups,

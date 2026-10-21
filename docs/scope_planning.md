@@ -140,6 +140,40 @@ Separate rule-configuration and source-graph fingerprints complement the full
 input and final proposal fingerprints. A failed non-size guard retains the
 original size holds too. No hold disappears without its explicit waiver receipt.
 
+### Optional all-small peripheral branches
+
+`policy.all_small_peripheral_branches` is omitted/disabled by default. An enabled
+rule requires `enabled: true`, `maximum_diameter_m` (positive finite SI metres)
+and `diameter_tolerance_m` (nonnegative finite metres, smaller than the maximum).
+Unknown keys, null, incomplete enabled payloads and non-Boolean flags fail closed.
+Supplied dimensions are validated even for disabled options. No project threshold
+is implicit; an explicit 0.2032 m maximum is an 8-inch scope choice, not a design
+standard or proof of negligible flow.
+
+Every link in the **complete peripheral tree** must be gravity and no larger
+than `maximum_diameter_m + diameter_tolerance_m` (inclusive). The tree must have
+exactly one retained attachment, and **every internal node** must reach that
+attachment using only declared directed group links. An upstream larger pipe
+that was withheld or is absent is not invented as a seed. Cycles, parallel paths,
+reconvergence, divergent directions, islands and multiple attachments cannot
+receive this exception. Real tributary sewage and catchment assignment still
+require separate review even where the native model has no assigned internal load.
+
+Only ordinary whole-group pipe-count and total-length holds may be waived. The
+ordinary maximum minor diameter, native loads, original assets, stations, pressure
+roles, protected nodes/links, controls, individual routes and joint-network guards
+remain binding. A protected/noncandidate link is an intentional retained boundary;
+its otherwise unprotected tributary can form a separate group. The caller must
+supply complete protections and explicitly approve exact group IDs and current
+fingerprints. A recommendation is never deletion or load-transfer authority.
+
+Enabled groups include `all_small_peripheral_review`, with exact internal-node
+directed attachment paths, configuration/input/source-graph fingerprints, guard
+results, original holds, the explicitly waived size holds, and final action/holds
+including the joint guard. Both optional rules are assessed independently against
+the same original holds; their receipts distinguish which exception qualified.
+Omitting this new policy preserves the earlier output structure and fingerprints.
+
 ### Outputs and approval binding
 
 The JSON-serializable result contains `groups`, `recommended_omit_link_ids`,

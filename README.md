@@ -428,6 +428,17 @@ lifecycle retirement. Keep project policies, exact approvals and load transfers
 private, and review SHMM preview/written-model diffs before publication. See
 [the scope contract and review guide](docs/scope_planning.md).
 
+The separate optional `all_small_peripheral_branches` flag reviews complete
+single-attachment gravity trees containing only pipes at or below an explicitly
+configured maximum diameter (plus tolerance). Every internal node must have an
+actual directed route to the attachment. This option can waive only whole-group
+count and total-length holds; all existing-asset, native-load, station/control,
+diameter and retained-network protections still apply. It is disabled by default
+and supplies no utility diameter threshold. Recommendations require exact project
+approval and load/catchment review before any model change. See the same scope
+contract for its configuration, evidence receipts and limitations.
+
+
 ### Explicit load migration
 
 `plan_load_migration` prepares reviewed source-node loads for existing or rebuilt
