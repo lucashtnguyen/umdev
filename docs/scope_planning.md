@@ -35,6 +35,16 @@ does not establish adequate capacity, acceptable headloss, equivalent routing or
 operating performance. Explicit project exceptions remain separate approvals;
 the caller must not silently turn a held group into a recommendation.
 
+### Review footprint and complete context
+
+The caller must supply the full current graph and include every eligible minor
+link in the connected review area. A link omitted from `candidate_link_ids` is
+an intentional retained boundary in this contract. Passing only links omitted
+by a reference model can therefore split a larger real branch at an artificial
+boundary. First run an inventory over all eligible minor links, then compare
+reference edits and approve complete groups. The planner does not infer missing
+GIS context or expand a caller's deliberately restricted footprint.
+
 ## Developer README
 
 Import `plan_small_runs` from `umdev` or `umdev.scope`. It is a pure Python helper

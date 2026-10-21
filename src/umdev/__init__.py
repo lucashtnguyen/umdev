@@ -4,6 +4,10 @@ Author: Lucas HT Nguyen
 Contact: https://github.com/lucashtnguyen
 Date: 2026-10-21
 Manually maintained public callable interface; project policy remains configuration.
+
+Last modified by: Lucas HT Nguyen
+Contact: https://github.com/lucashtnguyen
+Date: 2026-10-21
 """
 
 from importlib import import_module
