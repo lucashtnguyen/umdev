@@ -414,6 +414,14 @@ have a reviewed surviving destination before planning.
 
 The pure SI helper returns exact group/input fingerprints, attachment nodes,
 alternate routes, tributary-loading warnings and held reasons. It writes nothing.
+An optional, disabled-by-default `short_seed_connector_branches` policy reviews
+whole peripheral trees whose larger-pipe reaches are each short and require
+small downstream connectors to their sole retained attachment. Separate larger
+reaches are assessed independently; smaller side tributaries do not split a
+continuous larger main. Only whole-group count/length holds may be waived, with
+the original reasons and exact seed/connector paths retained in the receipt.
+Load, pressure, station/control, diameter and retained-network protections remain
+binding. Thresholds and both dimensional tolerances must be explicit SI values.
 No recorded load does not mean zero real sewage; a directed alternate route
 does not prove capacity. Reference-model omissions cannot authorize deletion or
 lifecycle retirement. Keep project policies, exact approvals and load transfers

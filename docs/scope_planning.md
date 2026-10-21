@@ -89,6 +89,57 @@ No utility-specific threshold is implicit. A caller may consider, for example,
 a 365.76 m whole-group length, eight pipes and 0.3048 m largest diameter, but
 these are provisional scope policies requiring review, not engineering standards.
 
+### Optional short-seed connector branches
+
+`policy.short_seed_connector_branches` is disabled when omitted or when its
+`enabled` value is false. The ordinary whole-group rules remain unchanged by
+default. An enabled rule requires all four SI values below; there are no implicit
+utility thresholds. Unknown keys, non-Boolean `enabled`, invalid dimensions and
+nonfinite values are rejected. Supplied values are validated even when disabled.
+
+| Nested key | Contract |
+| --- | --- |
+| `enabled` | Explicit Boolean. |
+| `seed_diameter_threshold_m` | Positive finite threshold separating larger seed pipes from small connectors. |
+| `minimum_seed_run_length_m` | Positive finite minimum continuous larger-pipe length to retain under this optional rule. |
+| `diameter_tolerance_m` | Nonnegative finite tolerance, smaller than the diameter threshold. |
+| `length_tolerance_m` | Nonnegative finite tolerance, smaller than the minimum seed length. |
+
+A pipe is a larger seed only when its diameter exceeds the configured threshold
+plus its diameter tolerance. A seed reach is short only when its summed length
+plus the length tolerance is strictly less than the minimum length. Equality
+and the tolerance band remain held. For example, a caller could explicitly use
+0.2032 m and 152.4 m (8 inches and 500 feet); these are scope choices requiring
+review, not hydraulic design criteria.
+
+Continuous reaches are traced in the directed **seed-only** graph. One incoming
+and one outgoing larger seed continue the same reach even when a smaller lateral
+joins or the larger diameter changes. Seed confluences and divergences separate
+reaches. Small intervening pipes also separate reaches; separate headwaters and
+tributaries are never added together to reach the length threshold. Every seed
+edge is accounted once.
+
+The exception applies only to complete peripheral trees with one retained
+attachment. Every separate seed reach must be short and have an actual directed
+path from its downstream end to that attachment containing at least one small
+connector. A large pipe directly reaching the attachment, a small pipe elsewhere
+in the tree, loops and multiple attachments do not qualify. Multiple consecutive
+downstream small connectors are allowed.
+
+An eligible branch may exceed the ordinary whole-group pipe count and total
+length. Only those two holds may be waived. All diameter, load, pressure,
+station/control, protected-node/link, individual-route and joint-network guards
+remain binding. The caller must still provide the full graph and complete
+protections; this option cannot discover undocumented stations or real tributary
+loads. Its recommendation omits modeled detail, not physical assets or loads.
+
+Enabled groups include `short_seed_connector_review`, with exact seed runs and
+downstream connector paths, protected-guard results, original hold reasons,
+explicitly overridden count/length reasons, final holds and joint-guard result.
+Separate rule-configuration and source-graph fingerprints complement the full
+input and final proposal fingerprints. A failed non-size guard retains the
+original size holds too. No hold disappears without its explicit waiver receipt.
+
 ### Outputs and approval binding
 
 The JSON-serializable result contains `groups`, `recommended_omit_link_ids`,
@@ -112,9 +163,13 @@ execute approval records.
 
 ### Verification
 
-Run `python -m pytest tests/test_scope.py`. Synthetic tests cover complete-tree
+Run `python -m pytest tests/test_scope.py tests/test_short_seed_scope.py`.
+Synthetic tests cover complete-tree
 thresholds, load/control/baseline protection, pendant and true parallel loops,
 required directed routes, two-anchor splitters, joint-removal failure, explicit
 retirement separation, loaded-orphan rejection, finite SI dimensions, exact-ID
-validation and reproducible input/proposal fingerprints. No project data or
-actual scope decisions are embedded in tests.
+validation and reproducible input/proposal fingerprints. The optional rule also
+tests exact length/diameter boundaries, tolerances, continuous diameter changes,
+small side tributaries, separate headwaters, seed branching, actual directed
+connector paths, cycles/parallel paths, unchanged hard protections and disabled
+compatibility. No project data or actual scope decisions are embedded in tests.
