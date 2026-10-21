@@ -14,7 +14,7 @@ from importlib import import_module
 from typing import Any
 
 __version__ = "0.1.0"
-__all__ = ["load_config", "ingest_sources", "prepare_network_from_dict", "prepare_project", "run_project", "infer_missing_inverts", "simplify_short_pipes", "observation_fingerprint", "propose_missing_pipe_end_offsets", "relative_port_offset_plan", "hazen_williams_full_pipe_headloss", "provisional_pump3_points", "plan_lifecycle_retirements", "lifecycle_record_fingerprint", "lifecycle_source_fingerprint", "plan_small_runs"]
+__all__ = ["load_config", "ingest_sources", "prepare_network_from_dict", "prepare_project", "run_project", "infer_missing_inverts", "simplify_short_pipes", "observation_fingerprint", "propose_missing_pipe_end_offsets", "relative_port_offset_plan", "hazen_williams_full_pipe_headloss", "provisional_pump3_points", "plan_lifecycle_retirements", "lifecycle_record_fingerprint", "lifecycle_source_fingerprint", "plan_small_runs", "plan_load_migration", "node_load_fingerprint"]
 
 _EXPORTS = {
     "load_config": ("configuration", "load_config"),
@@ -33,6 +33,8 @@ _EXPORTS = {
     "lifecycle_record_fingerprint": ("lifecycle", "lifecycle_record_fingerprint"),
     "lifecycle_source_fingerprint": ("lifecycle", "lifecycle_source_fingerprint"),
     "plan_small_runs": ("scope", "plan_small_runs"),
+    "plan_load_migration": ("load_migration", "plan_load_migration"),
+    "node_load_fingerprint": ("load_migration", "node_load_fingerprint"),
 }
 
 

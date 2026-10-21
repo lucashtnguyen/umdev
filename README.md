@@ -420,6 +420,25 @@ lifecycle retirement. Keep project policies, exact approvals and load transfers
 private, and review SHMM preview/written-model diffs before publication. See
 [the scope contract and review guide](docs/scope_planning.md).
 
+### Explicit load migration
+
+`plan_load_migration` prepares reviewed source-node loads for existing or rebuilt
+replacement nodes, including explicitly weighted splits. A retired pipe need not
+retire its loaded node; the planner moves only loads explicitly mapped by review.
+Source/target node and load-definition fingerprints guard each migration. Compatible
+water-quantity DWF, external FLOW and RDII retain patterns, series and UH references
+and exact coefficient totals, including existing destination loading. Both the
+external time-series scale and baseline receive each split weight.
+
+Missing/changed definitions, unmapped retired loading, duplicate slots, incompatible
+hydrographs, quality coupling and unsupported retired-node dependencies stay held.
+Identical external FILE references carry a content/accessibility warning; no files
+are opened. Historical archival plans must remain separate from active synthetic
+forcing. SHMM alone publishes models and checks written changes. This is quantity
+record conservation, not catchment, capacity or engineering acceptance. See the
+[load migration contract](docs/load_migration.md) for schema, equations, provenance
+guards, output records and tests.
+
 ## Developer README
 
 Use Python 3.12 or newer with hymo >=0.2.1, SHMM >=0.1.2 and pyproj >=3.6,<4.
