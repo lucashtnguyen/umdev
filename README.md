@@ -3,7 +3,7 @@
 - Author: Lucas HT Nguyen
 - Last modified by: Lucas HT Nguyen
 - Contact: [GitHub](https://github.com/lucashtnguyen)
-- Date: 2026-10-16
+- Date: 2026-10-21
 - Status: Implemented 0.1.0 callable runtime with explicit capability limits.
 
 ## Summary
@@ -382,6 +382,43 @@ The native axes are head then flow. Shape factors, downhill-head behavior and
 full-pipe friction assumptions are reported; manufacturer performance and
 pressure/transient adequacy remain unverified. See the
 [calculation, units and review guide](docs/pump_curve_preparation.md).
+
+### Reviewed model retirements
+
+`plan_lifecycle_retirements` prepares source/native-fingerprint-bound retirement
+intent without modifying GIS or model files. It requires complete reviewed
+aggregate membership and an explicit existing/rebuild/scope-only disposition for
+every active member. Pending matches, proximity and an abandoned partial segment
+never authorize blanket deletion of an aggregate. Newly orphaned junctions need
+explicit decisions and surviving load destinations. Compatible FLOW and RDII
+records preserve native definitions and exact decimal totals; incompatible
+patterns, pollutant concentrations, controls and unsupported references stay held.
+
+All proposed groups execute together or none execute. Inspect the full native
+records, active members, orphan/reference inventory and load transfers before
+SHMM publication. The planner writes nothing and does not establish catchment
+allocation, connectivity, solver performance or engineering acceptance. Private
+project approvals/configuration remain outside the public repo.
+See [the complete lifecycle contract](docs/lifecycle_retirements.md) for schema,
+source guards, metadata handling, callable usage and limitations.
+
+### Reduced-network scope proposals
+
+`plan_small_runs` prepares complete minor-network omission groups for manual
+trunk-model review. It assesses whole peripheral trees, pendant loops and
+serial alternate corridors before size thresholds; original assets, loads,
+controls, stations and required connections remain explicit protections.
+Individual and joint graph guards reject new island splits or lost protected
+terminal routes. A loaded node orphaned by separate lifecycle retirements must
+have a reviewed surviving destination before planning.
+
+The pure SI helper returns exact group/input fingerprints, attachment nodes,
+alternate routes, tributary-loading warnings and held reasons. It writes nothing.
+No recorded load does not mean zero real sewage; a directed alternate route
+does not prove capacity. Reference-model omissions cannot authorize deletion or
+lifecycle retirement. Keep project policies, exact approvals and load transfers
+private, and review SHMM preview/written-model diffs before publication. See
+[the scope contract and review guide](docs/scope_planning.md).
 
 ## Developer README
 
